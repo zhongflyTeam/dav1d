@@ -1,0 +1,185 @@
+#!/bin/bash -eu
+
+APP="${0}"
+
+function usage() {
+    if [ $# -ge 1 ]; then
+        echo "$@"
+        echo
+    fi
+
+    cat << _EOF
+Usage: ${APP} [options]
+
+Supported options:
+  --enable-static
+  --disable-shared        toggle between building a shared (.so) or static (.a) library
+  --disable-optimizations builds without optimizations (for debugging)
+  --enable-debug          builds with debug symbols (disables stripping/versioning)
+  --sanitize-address      build with address sanitizer support (default: no)
+  --sanitize-integer      build with integer overflow checker support (default: no)
+  --sanitize-thread       build with race condition detection support (default: no)
+  --cc=COMPILER           specify compiler (default: gcc)
+  --bitdepths=\$list       enable only specified bitdepths (default: 8 10)
+_EOF
+
+    exit 1
+}
+
+function error() {
+    echo "$@"
+    echo
+
+    exit 1
+}
+
+MACHINE="$(uname -m)"
+case "${MACHINE}" in
+    x86_64) ARCH=x86;;
+    *) error "Unsupported architecture ${MACHINE}"
+esac
+
+OS="$(uname -s)"
+case "${OS}" in
+    Darwin) OS=darwin;;
+    Linux) OS=linux;;
+    *) error "Unsupported OS ${OS}";;
+esac
+
+echo "Configuring for ${OS} on ${ARCH} (${MACHINE})"
+
+CONFIG_SHARED=yes
+CONFIG_OPTIMIZATIONS=yes
+CONFIG_DEBUG=no
+CONFIG_SANITIZE_ADDRESS=no
+CONFIG_SANITIZE_INTEGER=no
+CONFIG_SANITIZE_THREAD=no
+CONFIG_COMPILER=gcc
+CONFIG_BITDEPTHS="8 10"
+CONFIG_8BPC=no
+CONFIG_10BPC=no
+EXTRA_CFLAGS=""
+
+function split() {
+    OIFS="${IFS}"
+    IFS="$2"
+    read -ra ARRAY <<< "$1"
+    IFS="${OIFS}"
+    ARRAY=("${ARRAY[@]}")
+    echo "${ARRAY[$3]}"
+}
+
+for arg in "$@"; do
+    case "${arg}" in
+        --help|-h) usage;;
+        --enable-static|--disable-shared) CONFIG_SHARED=no;;
+        --disable-static|--enable-shared) CONFIG_SHARED=yes;;
+        --enable-optimizations) CONFIG_OPTIMIZATIONS=yes;;
+        --disable-optimizations) CONFIG_OPTIMIZATIONS=no;;
+        --enable-debug) CONFIG_DEBUG=yes;;
+        --disable-debug) CONFIG_DEBUG=no;;
+        --sanitize-address) CONFIG_SANITIZE_ADDRESS=yes;;
+        --sanitize-integer) CONFIG_SANITIZE_INTEGER=yes;;
+        --sanitize-thread) CONFIG_SANITIZE_THREAD=yes;;
+        --cc=*) CONFIG_COMPILER="$(split "${arg}" "=" 1)";;
+        --bitdepths=*) CONFIG_BITDEPTHS="$(split "${arg}" "=" 1)";;
+        *) error "Unsupported commandline argument ${arg}";;
+    esac
+done
+
+SRCDIR="$(dirname $0)"
+[ -f Makefile ] || cat > Makefile << _EOF
+include ${SRCDIR}/Makefile
+
+vpath %.c ${SRCDIR}
+vpath %.asm ${SRCDIR}
+vpath %.h ${SRCDIR}
+_EOF
+
+# test for atomic operation support in compiler, else use compat header
+function test_compile() {
+    FILE=`mktemp dav1d.XXXXXXXX`
+    cat > ${FILE}.c << _EOF
+${2}
+_EOF
+    ${CONFIG_COMPILER} ${1} -c -o ${FILE}.o -c ${FILE}.c &> /dev/null
+    res=$?
+    rm -f ${FILE}.o ${FILE}.c ${FILE}
+    return $res
+}
+
+if ! test_compile "" "#include <stdatomic.h>"; then
+    EXTRA_CFLAGS="-I${SRCDIR}/compat/atomic"
+    test_compile "${EXTRA_CFLAGS}" "#include <stdatomic.h>" ||
+        (echo "Atomics not supported" && exit 1)
+fi
+
+if test_compile "-mpreferred-stack-boundary=5" ""; then
+    SAFLAGS="-mpreferred-stack-boundary=5"
+    SRAFLAGS="-mincoming-stack-boundary=4"
+elif test_compile "-mstack-alignment=32" ""; then
+    SAFLAGS="-mstack-alignment=32"
+    SRAFLAGS="-mstackrealign"
+else
+    echo "Failed to specify stack alignment" && exit 1
+fi
+
+cat > options.mak << _EOF
+# auto-generated, do not edit
+ARCH=${ARCH}
+OS=${OS}
+CONFIG_SHARED=${CONFIG_SHARED}
+CONFIG_OPTIMIZATIONS=${CONFIG_OPTIMIZATIONS}
+CONFIG_DEBUG=${CONFIG_DEBUG}
+CONFIG_SANITIZE_ADDRESS=${CONFIG_SANITIZE_ADDRESS}
+CONFIG_SANITIZE_INTEGER=${CONFIG_SANITIZE_INTEGER}
+CONFIG_SANITIZE_THREAD=${CONFIG_SANITIZE_THREAD}
+CONFIG_COMPILER=${CONFIG_COMPILER}
+CONFIG_BITDEPTHS=${CONFIG_BITDEPTHS}
+EXTRA_CFLAGS=${EXTRA_CFLAGS}
+SAFLAGS=${SAFLAGS}
+SRAFLAGS=${SRAFLAGS}
+SRCDIR=${SRCDIR}
+_EOF
+
+cat > options.h << _EOF
+/* auto-generated, do not edit */
+#ifndef __DAV1D_OPTIONS_H__
+#define __DAV1D_OPTIONS_H__
+_EOF
+
+function option() {
+    if [ $2 = yes ]; then
+        echo "#define $1 1"
+    else
+        echo "#define $1 0"
+    fi
+}
+
+for bit in ${CONFIG_BITDEPTHS}; do
+    eval CONFIG_${bit}BPC=yes
+done
+option CONFIG_8BPC ${CONFIG_8BPC} >> options.h
+option CONFIG_10BPC ${CONFIG_10BPC} >> options.h
+
+cat >> options.h << _EOF
+#endif /* __DAV1D_OPTIONS_H__ */
+_EOF
+
+( if [ ${OS} = linux ]; then
+    echo 'LIBDAV1D {'
+    echo 'global:'
+fi
+while read -r LINE; do
+    case ${OS} in
+        darwin) echo "_${LINE}";;
+        linux) echo "${LINE};";;
+    esac
+done < ${SRCDIR}/exports.version.tmpl
+if [ ${OS} = linux ]; then
+    echo 'local:'
+    echo '*;'
+    echo '};'
+fi ) > exports.version
+
+exit 0

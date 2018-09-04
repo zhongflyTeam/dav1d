@@ -1,0 +1,72 @@
+Bitstream features:
+- loop restoration
+   o add support for SGRProj
+- 12-bit support
+   o in a way that does not add huge binary size to the C code
+
+Bugs:
+- weird header features not yet supported correctly:
+   o disable_cdf_update needs to act on per-symbol level also
+   o OBUs without a length field
+   o super_res
+   o frame_ref_short_signaling
+   o film grain
+- non-uniform tile indexing when writing edges can overflow array boundaries
+- in lossless, only subsampled 4x4 blocks can use cfl, so no need for separate
+  prediction block
+- support force_integer_mv (see unset_hp_bit()) for inter frames, and test hp=0
+   o maybe turn hp/intmv into an enum or use an int fracbits field
+
+Decoder features/optimizations:
+- loopfilter and cdef: run multiple blocks per dsp call
+- simd where relevant (itx, ipred, mc, loopfilter, cdef, looprestoration)
+   o move emu_edge() out of recon.c
+   o move dequant from decode_coefs() to itx
+   o should palette be typed pixel (instead of uint16_t) for optimal 8-bit SIMD?
+   o order_palette() in decode.c can be SIMD'ed
+- frame threading
+   o Av1Block should be an array instead of static so we can do 2-pass decoding
+      . coef reading needs to be integrated in the "read" pass also
+      . coefs and palette indices need to be cached frame-wide
+      . recon_b_inter/intra moves to pass 2
+   o at the end of each tile sbrow, copy the bottom line of pixels into a
+     temp buffer and use that (instead of f->cur.p.data[]) as intra pred edge
+     and then actually use this pre-lpf buffer at sbrow boundaries
+   o interleave loopfilter at the end of each (interleaved) sbrow
+   o av1_init_ref_mv_tile_row interleave with sbrow parsing
+- tile threading (qsort input tiles, rows and cols are independent)
+   o need some way of clearing partial entropy contexts above and left if
+     tile boundaries are across odd sb64 positions
+   o distribute the memset(f->lf.mask, 0) across individual tile threads
+- postfilter threading
+   o each plane's deblock + h/v direction can run in its own thread, and the
+     cdef/restoration afterwards can each run in their own respective threads
+     also
+
+Cleanups & testing:
+- some pixel arrays need to move from stack to heap (inside Dav1dTileContext)
+  since otherwise we may run out of stack space (recon.c)
+   o ALIGN_STK_32(pixel, lap, 128 * 32,);
+   o ALIGN_STK_32(int16_t, ac, 32 * 32,);
+   o ALIGN_STK_32(coef, tmp, 2, [128 * 128]);
+   o ALIGN_STK_32(pixel, tmp, 32 * 32,);
+   o uint8_t seg_mask[128 * 128]; (probably needs to be aligned also)
+   o uint8_t pal_idx[2][64 * 64];
+   o move temp arrays used by loop restoration to scratch memory
+- cdef: noskip_mask can be stored at 8x8 resolution and or'ed together
+- clean up the setup in submit_frame() and decode_frame(), I believe only frame
+  allocation and updating c->refs[] should be in submit_frame(), and everything
+  else should be in decode_frame(), the distinction between the two is kind of
+  messy right now
+- switch refmvs resolution to 8x8 instead of 4x4?
+- unit tests for bitstream compliance and simd correctness
+- license headers and LICENSE file in tree
+- non-x86_64 support (configure)
+- make smaller (binary size w/ optimizations and w/o debug info):
+   o ipred.c (85kB)
+- reduce size of Av1Block (to make frame threading more efficient)
+
+Re-implement:
+- msac.[ch]
+- ref_mvs.[ch]
+- cdef.c
