@@ -7,7 +7,7 @@
 #include <string.h>
 #include <stdio.h>
 
-#include "options.h"
+#include "config.h"
 
 #include "common/intops.h"
 #include "common/mem.h"
