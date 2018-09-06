@@ -55,7 +55,7 @@ static int read_mv_component_diff(Dav1dTileContext *const t,
 
     if (!cl) {
         up = msac_decode_bool_adapt(&t->msac, mv_comp->class0);
-        if (have_hp) {
+        if (have_fp) {
             fp = msac_decode_symbol_adapt(&t->msac, mv_comp->class0_fp[up], 4);
             hp = have_hp ? msac_decode_bool_adapt(&t->msac, mv_comp->class0_hp) : 1;
         } else {
@@ -66,7 +66,7 @@ static int read_mv_component_diff(Dav1dTileContext *const t,
         up = 1 << cl;
         for (int n = 0; n < cl; n++)
             up |= msac_decode_bool_adapt(&t->msac, mv_comp->classN[n]) << n;
-        if (have_hp) {
+        if (have_fp) {
             fp = msac_decode_symbol_adapt(&t->msac, mv_comp->classN_fp, 4);
             hp = have_hp ? msac_decode_bool_adapt(&t->msac, mv_comp->classN_hp) : 1;
         } else {
@@ -2111,7 +2111,8 @@ static int decode_frame(Dav1dFrameContext *const f) {
         av1_init_ref_mv_common(f->libaom_cm, f->bw >> 1, f->bh >> 1,
                                f->b4_stride, f->seq_hdr.sb128,
                                f->mvs, refmvs, f->cur.p.poc, f->refpoc,
-                               refrefpoc, f->frame_hdr.gmv, f->frame_hdr.hp);
+                               refrefpoc, f->frame_hdr.gmv,
+                               f->frame_hdr.hp, f->frame_hdr.use_ref_frame_mvs);
         av1_init_ref_mv_tile_row(f->libaom_cm, 0, f->bw, 0, f->bh);
     } else {
         f->mvs_ref = NULL;

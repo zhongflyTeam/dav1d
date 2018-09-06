@@ -39,7 +39,7 @@ void av1_init_ref_mv_common(AV1_COMMON *cm,
                             const unsigned ref_poc[7],
                             const unsigned ref_ref_poc[7][7],
                             const WarpedMotionParams gmv[7],
-                            int allow_hp);
+                            int allow_hp, int allow_ref_frame_mvs);
 
 // call for start of each sbrow per tile
 void av1_init_ref_mv_tile_row(AV1_COMMON *cm,

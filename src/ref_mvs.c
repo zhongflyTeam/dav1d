@@ -3454,7 +3454,7 @@ void av1_init_ref_mv_common(AV1_COMMON *cm,
                             const unsigned ref_poc[7],
                             const unsigned ref_ref_poc[7][7],
                             const WarpedMotionParams gmv[7],
-                            const int allow_hp)
+                            const int allow_hp, const int allow_ref_frame_mvs)
 {
     if (cm->mi_cols != (w8 << 1) || cm->mi_rows != (h8 << 1)) {
         const int align_h = (h8 + 15) & ~15;
@@ -3485,7 +3485,7 @@ void av1_init_ref_mv_common(AV1_COMMON *cm,
     memcpy(&cm->global_motion[1], gmv, sizeof(*gmv) * 7);
 
     cm->frame_offset = cur_poc;
-    cm->allow_ref_frame_mvs = 1;
+    cm->allow_ref_frame_mvs = allow_ref_frame_mvs;
     cm->cur_frame.mvs = cur;
     for (int i = 0; i < 7; i++) {
         cm->buffer_pool.frame_bufs[i].mvs = ref_mvs[i];
