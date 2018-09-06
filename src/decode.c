@@ -2197,13 +2197,17 @@ static int decode_frame(Dav1dFrameContext *const f) {
     // decode individual tiles per tile group
     CdfContext update_cdf;
     int update_set = 0;
+    const unsigned tile_col_mask = (1 << f->frame_hdr.tiling.log2_cols) - 1;
     for (int i = 0; i < f->n_tile_data; i++) {
         const uint8_t *data = f->tile[i].data.data;
         size_t size = f->tile[i].data.sz;
 
-        for (int j = f->tile[i].start; j <= f->tile[i].end; j++) {
+        const int last_tile_col_plus1 = 1 + (f->tile[i].end & tile_col_mask);
+        const int empty_tiles = imax(0, last_tile_col_plus1 - f->frame_hdr.tiling.cols);
+        for (int j = f->tile[i].start; j <= f->tile[i].end - empty_tiles; j++) {
+            if ((j & tile_col_mask) >= f->frame_hdr.tiling.cols) continue;
             unsigned tile_sz;
-            if (j == f->tile[i].end) {
+            if (j == f->tile[i].end - empty_tiles) {
                 tile_sz = size;
             } else {
                 tile_sz = 0;
