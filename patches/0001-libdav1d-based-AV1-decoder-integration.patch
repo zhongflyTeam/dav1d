@@ -1,0 +1,211 @@
+From 993553533277cd1f0ddbfcc4b1a209af92df6d7b Mon Sep 17 00:00:00 2001
+From: "Ronald S. Bultje" <rsbultje@gmail.com>
+Date: Thu, 6 Sep 2018 12:00:37 -0400
+Subject: [PATCH] libdav1d-based AV1 decoder integration.
+
+---
+ configure                 |   4 ++
+ libavcodec/Makefile       |   1 +
+ libavcodec/allcodecs.c    |   1 +
+ libavcodec/libdav1d_dec.c | 116 ++++++++++++++++++++++++++++++++++++++++++++++
+ libavformat/riff.c        |   1 +
+ 5 files changed, 123 insertions(+)
+ create mode 100644 libavcodec/libdav1d_dec.c
+
+diff --git a/configure b/configure
+index 0d6ee0a..85b949b 100755
+--- a/configure
++++ b/configure
+@@ -226,6 +226,7 @@ External library support:
+   --enable-libcelt         enable CELT decoding via libcelt [no]
+   --enable-libcdio         enable audio CD grabbing with libcdio [no]
+   --enable-libcodec2       enable codec2 en/decoding using libcodec2 [no]
++  --enable-libdav1d        enable AV1 decoding via libdav1d [no]
+   --enable-libdavs2        enable AVS2 decoding via libdavs2 [no]
+   --enable-libdc1394       enable IIDC-1394 grabbing using libdc1394
+                            and libraw1394 [no]
+@@ -1709,6 +1710,7 @@ EXTERNAL_LIBRARY_LIST="
+     libcaca
+     libcelt
+     libcodec2
++    libdav1d
+     libdc1394
+     libdrm
+     libflite
+@@ -3077,6 +3079,7 @@ libaom_av1_encoder_select="extract_extradata_bsf"
+ libcelt_decoder_deps="libcelt"
+ libcodec2_decoder_deps="libcodec2"
+ libcodec2_encoder_deps="libcodec2"
++libdav1d_decoder_deps="libdav1d"
+ libdavs2_decoder_deps="libdavs2"
+ libfdk_aac_decoder_deps="libfdk_aac"
+ libfdk_aac_encoder_deps="libfdk_aac"
+@@ -6051,6 +6054,7 @@ enabled libcelt           && require libcelt celt/celt.h celt_decode -lcelt0 &&
+ enabled libcaca           && require_pkg_config libcaca caca caca.h caca_create_canvas
+ enabled libcodec2         && require libcodec2 codec2/codec2.h codec2_create -lcodec2
+ enabled libdavs2          && require_pkg_config libdavs2 "davs2 >= 1.5.115" davs2.h davs2_decoder_open
++enabled libdav1d          && require libdav1d dav1d.h dav1d_version -ldav1d
+ enabled libdc1394         && require_pkg_config libdc1394 libdc1394-2 dc1394/dc1394.h dc1394_new
+ enabled libdrm            && require_pkg_config libdrm libdrm xf86drm.h drmGetVersion
+ enabled libfdk_aac        && { check_pkg_config libfdk_aac fdk-aac "fdk-aac/aacenc_lib.h" aacEncOpen ||
+diff --git a/libavcodec/Makefile b/libavcodec/Makefile
+index f8673f0..b238071 100644
+--- a/libavcodec/Makefile
++++ b/libavcodec/Makefile
+@@ -950,6 +950,7 @@ OBJS-$(CONFIG_LIBAOM_AV1_ENCODER)         += libaomenc.o
+ OBJS-$(CONFIG_LIBCELT_DECODER)            += libcelt_dec.o
+ OBJS-$(CONFIG_LIBCODEC2_DECODER)          += libcodec2.o codec2utils.o
+ OBJS-$(CONFIG_LIBCODEC2_ENCODER)          += libcodec2.o codec2utils.o
++OBJS-$(CONFIG_LIBDAV1D_DECODER)           += libdav1d_dec.o
+ OBJS-$(CONFIG_LIBDAVS2_DECODER)           += libdavs2.o
+ OBJS-$(CONFIG_LIBFDK_AAC_DECODER)         += libfdk-aacdec.o
+ OBJS-$(CONFIG_LIBFDK_AAC_ENCODER)         += libfdk-aacenc.o
+diff --git a/libavcodec/allcodecs.c b/libavcodec/allcodecs.c
+index a461131..e232ba7 100644
+--- a/libavcodec/allcodecs.c
++++ b/libavcodec/allcodecs.c
+@@ -673,6 +673,7 @@ extern AVCodec ff_libcelt_decoder;
+ extern AVCodec ff_libcodec2_encoder;
+ extern AVCodec ff_libcodec2_decoder;
+ extern AVCodec ff_libdavs2_decoder;
++extern AVCodec ff_libdav1d_decoder;
+ extern AVCodec ff_libfdk_aac_encoder;
+ extern AVCodec ff_libfdk_aac_decoder;
+ extern AVCodec ff_libgsm_encoder;
+diff --git a/libavcodec/libdav1d_dec.c b/libavcodec/libdav1d_dec.c
+new file mode 100644
+index 0000000..18e7eea
+--- /dev/null
++++ b/libavcodec/libdav1d_dec.c
+@@ -0,0 +1,116 @@
++#include "dav1d.h"
++#include "avcodec.h"
++#include "internal.h"
++
++typedef struct Libdav1dContext {
++    Dav1dContext *c;
++} Libdav1dContext;
++
++static av_cold int libdav1d_dec_init(AVCodecContext *c)
++{
++    Libdav1dContext *dav1d = c->priv_data;
++    Dav1dSettings s;
++    int res;
++
++    dav1d_init();
++    dav1d_default_settings(&s);
++    if ((res = dav1d_open(&dav1d->c, &s)) < 0)
++        return res;
++
++    return 0;
++}
++
++static av_cold int libdav1d_dec_close(AVCodecContext *c)
++{
++    Libdav1dContext *dav1d = c->priv_data;
++
++    dav1d_close(dav1d->c);
++
++    return 0;
++}
++
++static void libdav1d_ref_free_wrapper(void *opaque, uint8_t *data) {
++    Dav1dPicture p;
++    memset(&p, 0, sizeof(p));
++    p.ref = opaque;
++    p.data[0] = (void *) 0x1;
++    dav1d_picture_unref(&p);
++}
++
++static int libdav1d_dec_decode(AVCodecContext *c, void *frame,
++                               int *got_frame_ptr, AVPacket *pkt)
++{
++    Libdav1dContext *dav1d = c->priv_data;
++    Dav1dData *data_ptr, data_mem;
++    Dav1dPicture p;
++    AVFrame *f = frame;
++    int res;
++
++    if (pkt) {
++        data_ptr = &data_mem;
++        dav1d_data_create(data_ptr, pkt->size);
++        memcpy(data_ptr->data, pkt->data, pkt->size);
++    } else {
++        data_ptr = NULL;
++    }
++
++    memset(&p, 0, sizeof(p));
++    if ((res = dav1d_decode(dav1d->c, data_ptr, &p)) < 0)
++        if (res != -EAGAIN)
++            return res;
++
++    if (res == 0) {
++        static const enum AVPixelFormat pix_fmt[][2] = {
++            [DAV1D_PIXEL_LAYOUT_I400] = { AV_PIX_FMT_GRAY8,   AV_PIX_FMT_GRAY10    },
++            [DAV1D_PIXEL_LAYOUT_I420] = { AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV420P10 },
++            [DAV1D_PIXEL_LAYOUT_I422] = { AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV422P10 },
++            [DAV1D_PIXEL_LAYOUT_I444] = { AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV444P10 },
++        };
++        f->format = c->pix_fmt = pix_fmt[p.p.layout][p.p.bpc == 10];
++        f->width = c->width = p.p.w;
++        f->height = c->height = p.p.h;
++        f->data[0] = p.data[0];
++        f->data[1] = p.data[1];
++        f->data[2] = p.data[2];
++        f->linesize[0] = p.stride[0];
++        f->linesize[1] = p.stride[1];
++        f->linesize[2] = p.stride[1];
++        f->color_primaries = p.p.pri;
++        f->color_trc = p.p.trc;
++        f->chroma_location = p.p.chr;
++        f->colorspace = p.p.mtrx;
++        f->color_range = p.p.fullrange ? AVCOL_RANGE_JPEG : AVCOL_RANGE_MPEG;
++        AVBufferRef *ref =
++            av_buffer_create(p.ref->data, p.ref->size,
++                             libdav1d_ref_free_wrapper,
++                             p.ref, AV_BUFFER_FLAG_READONLY);
++        f->buf[0] = av_buffer_ref(ref);
++        f->buf[1] = av_buffer_ref(ref);
++        f->buf[2] = av_buffer_ref(ref);
++        av_buffer_unref(&ref);
++        *got_frame_ptr = 1;
++
++        // match timestamps and packet size
++        f->key_frame = !!(pkt->flags & AV_PKT_FLAG_KEY);
++        f->pict_type = f->key_frame ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_P;
++        f->pkt_pts = pkt->pts;
++        f->pkt_dts = pkt->dts;
++        f->flags = 0;
++        f->pkt_size = pkt->size;
++    } else {
++        *got_frame_ptr = 0;
++    }
++
++    return pkt->size;
++}
++
++AVCodec ff_libdav1d_decoder = {
++    .name           = "libdav1d",
++    .long_name      = NULL_IF_CONFIG_SMALL("Dav1d AV1 decoder by Two Orioles"),
++    .type           = AVMEDIA_TYPE_VIDEO,
++    .id             = AV_CODEC_ID_AV1,
++    .priv_data_size = sizeof(Libdav1dContext),
++    .init           = libdav1d_dec_init,
++    .close          = libdav1d_dec_close,
++    .decode         = libdav1d_dec_decode,
++};
+diff --git a/libavformat/riff.c b/libavformat/riff.c
+index 5f1aafe..05cacc2 100644
+--- a/libavformat/riff.c
++++ b/libavformat/riff.c
+@@ -318,6 +318,7 @@ const AVCodecTag ff_codec_bmp_tags[] = {
+     { AV_CODEC_ID_VP7,          MKTAG('V', 'P', '7', '1') },
+     { AV_CODEC_ID_VP8,          MKTAG('V', 'P', '8', '0') },
+     { AV_CODEC_ID_VP9,          MKTAG('V', 'P', '9', '0') },
++    { AV_CODEC_ID_AV1,          MKTAG('A', 'V', '0', '1') },
+     { AV_CODEC_ID_ASV1,         MKTAG('A', 'S', 'V', '1') },
+     { AV_CODEC_ID_ASV2,         MKTAG('A', 'S', 'V', '2') },
+     { AV_CODEC_ID_VCR1,         MKTAG('V', 'C', 'R', '1') },
+-- 
+2.8.1
+
