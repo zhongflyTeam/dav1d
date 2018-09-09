@@ -40,6 +40,13 @@ else
     error('Failed to specify stack alignment')
 endif
 
+if cc.has_argument('-fvisibility=hidden')
+    add_project_arguments('-fvisibility=hidden', language: 'c')
+else
+    warning('Compiler does not support -fvisibility=hidden, all symbols will be public!')
+endif
+    
+
 subdir('include')
 
 #

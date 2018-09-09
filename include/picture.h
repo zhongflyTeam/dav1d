@@ -10,6 +10,18 @@
 
 #include "ref.h"
 
+#ifndef DAV1D_API
+    #if defined _WIN32 || defined __CYGWIN__
+      #define DAV1D_API __declspec(dllexport)
+    #else
+      #if __GNUC__ >= 4
+        #define DAV1D_API __attribute__ ((visibility ("default")))
+      #else
+        #define DAV1D_API
+      #endif
+    #endif
+#endif
+
 enum Dav1dPixelLayout {
     DAV1D_PIXEL_LAYOUT_I400, ///< monochrome
     DAV1D_PIXEL_LAYOUT_I420, ///< 4:2:0 planar
@@ -117,6 +129,6 @@ typedef struct Dav1dPicture {
 /**
  * Release reference to a picture.
  */
-void dav1d_picture_unref(Dav1dPicture *p);
+DAV1D_API void dav1d_picture_unref(Dav1dPicture *p);
 
 #endif /* __DAV1D_PICTURE_H__ */

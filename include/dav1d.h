@@ -4,6 +4,18 @@
 #include "picture.h"
 #include "data.h"
 
+#ifndef DAV1D_API
+    #if defined _WIN32 || defined __CYGWIN__
+      #define DAV1D_API __declspec(dllexport)
+    #else
+      #if __GNUC__ >= 4
+        #define DAV1D_API __attribute__ ((visibility ("default")))
+      #else
+        #define DAV1D_API
+      #endif
+    #endif
+#endif
+
 typedef struct Dav1dContext Dav1dContext;
 
 typedef struct Dav1dSettings {
@@ -14,17 +26,17 @@ typedef struct Dav1dSettings {
 /*
  * Init the library.
  */
-void dav1d_init(void);
+DAV1D_API void dav1d_init(void);
 
 /**
  * Get library version.
  */
-const char *dav1d_version(void);
+DAV1D_API const char *dav1d_version(void);
 
 /**
  * Initialize settings to default values.
  */
-void dav1d_default_settings(Dav1dSettings *s);
+DAV1D_API void dav1d_default_settings(Dav1dSettings *s);
 
 /**
  * Open/allocate decoder instance.
@@ -36,7 +48,7 @@ void dav1d_default_settings(Dav1dSettings *s);
  *
  * This returns < 0 (a negative errno code) on error, or 0 on success.
  */
-int dav1d_open(Dav1dContext **c_out, const Dav1dSettings *s);
+DAV1D_API int dav1d_open(Dav1dContext **c_out, const Dav1dSettings *s);
 
 /**
  * Decode one input frame. Library takes ownership of the passed-in reference.
@@ -48,11 +60,11 @@ int dav1d_open(Dav1dContext **c_out, const Dav1dSettings *s);
  * To flush the decoder (i.e. all input is finished), feed it NULL input data
  * until it returns -EAGAIN.
  */
-int dav1d_decode(Dav1dContext *c, Dav1dData *in, Dav1dPicture *out);
+DAV1D_API int dav1d_decode(Dav1dContext *c, Dav1dData *in, Dav1dPicture *out);
 
 /**
  * Close decoder instance, free all associated memory.
  */
-void dav1d_close(Dav1dContext *c);
+DAV1D_API void dav1d_close(Dav1dContext *c);
 
 #endif /* __DAV1D_H__ */
