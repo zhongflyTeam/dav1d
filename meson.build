@@ -112,18 +112,18 @@ libdav1d = library('dav1d',
 # dav1d cli tool
 #
 dav1d_sources = files(
-    'cli/dav1d.c',
-    'cli/dav1d_cli_parse.c',
-    'input/input.c',
-    'input/ivf.c',
-    'output/md5.c',
-    'output/output.c',
-    'output/y4m2.c',
-    'output/yuv.c'
+    'tools/dav1d.c',
+    'tools/dav1d_cli_parse.c',
+    'tools/input/input.c',
+    'tools/input/ivf.c',
+    'tools/output/md5.c',
+    'tools/output/output.c',
+    'tools/output/y4m2.c',
+    'tools/output/yuv.c'
 )
 
 dav1d = executable('dav1d',
     dav1d_sources, rev_target,
     link_with: libdav1d,
-    include_directories: dav1d_inc_dirs
+    include_directories: dav1d_inc_dirs + [include_directories('tools')]
 )
