@@ -137,6 +137,7 @@ void dav1d_close(Dav1dContext *const c) {
         free(c->fc[n].lf.tx_lpf_right_edge[0]);
         av1_free_ref_mv_common(c->fc[n].libaom_cm);
         free(c->fc[n].lf.cdef_line);
+        free(c->fc[n].lf.lr_lpf_line);
     }
     free(c->fc);
     for (int n = 0; n < c->n_tile_data; n++)

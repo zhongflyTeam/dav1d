@@ -2036,6 +2036,7 @@ static int decode_frame(Dav1dFrameContext *const f) {
     if (f->sb128w > f->a_sz) {
         freep(&f->a);
         freep(&f->lf.cdef_line);
+        freep(&f->lf.lr_lpf_line);
         f->a = malloc(f->sb128w * sizeof(*f->a));
         if (!f->a) return -ENOMEM;
         // note that we allocate all pixel arrays as if we were dealing with
