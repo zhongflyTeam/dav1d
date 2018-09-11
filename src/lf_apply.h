@@ -13,6 +13,7 @@
 #include "src/levels.h"
 
 void bytefn(dav1d_loopfilter_sbrow)(const Dav1dFrameContext *f,
-                                    pixel *const p[3], Av1Filter *lflvl, int sby);
+                                    pixel *const p[3], Av1Filter *lflvl,
+                                    int sby, int start_of_tile_row);
 
 #endif /* __DAV1D_SRC_LF_APPLY_H__ */

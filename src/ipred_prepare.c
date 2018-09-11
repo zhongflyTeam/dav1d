@@ -55,6 +55,7 @@ bytefn(prepare_intra_edges)(const int x, const int have_left,
                             const enum EdgeFlags edge_flags,
                             const pixel *const dst,
                             const ptrdiff_t stride,
+                            const pixel *prefilter_toplevel_sb_edge,
                             enum IntraPredMode mode, int *const angle,
                             const int tw, const int th,
                             pixel *const topleft_out)
@@ -93,6 +94,19 @@ bytefn(prepare_intra_edges)(const int x, const int have_left,
         break;
     }
 
+    const pixel *dst_top;
+    if (have_top &&
+        (av1_intra_prediction_edges[mode].needs_top ||
+         av1_intra_prediction_edges[mode].needs_topleft ||
+         (av1_intra_prediction_edges[mode].needs_left && !have_left)))
+    {
+        if (prefilter_toplevel_sb_edge) {
+            dst_top = &prefilter_toplevel_sb_edge[x * 4];
+        } else {
+            dst_top = &dst[-PXSTRIDE(stride)];
+        }
+    }
+
     if (av1_intra_prediction_edges[mode].needs_left) {
         const int sz = th << 2;
         pixel *const left = &topleft_out[-sz];
@@ -105,7 +119,7 @@ bytefn(prepare_intra_edges)(const int x, const int have_left,
             if (px_have < sz)
                 pixel_set(left, left[sz - px_have], sz - px_have);
         } else {
-            pixel_set(left, have_top ? dst[-PXSTRIDE(stride)] : ((1 << BITDEPTH) >> 1) + 1, sz);
+            pixel_set(left, have_top ? *dst_top : ((1 << BITDEPTH) >> 1) + 1, sz);
         }
 
         if (av1_intra_prediction_edges[mode].needs_bottomleft) {
@@ -125,21 +139,13 @@ bytefn(prepare_intra_edges)(const int x, const int have_left,
         }
     }
 
-    if (av1_intra_prediction_edges[mode].needs_topleft) {
-        if (have_left) {
-            *topleft_out = have_top ? dst[-(PXSTRIDE(stride) + 1)] : dst[-1];
-        } else {
-            *topleft_out = have_top ? dst[-PXSTRIDE(stride)] : (1 << BITDEPTH) >> 1;
-        }
-    }
-
     if (av1_intra_prediction_edges[mode].needs_top) {
         const int sz = tw << 2;
         pixel *const top = &topleft_out[1];
 
         if (have_top) {
             const int px_have = imin(sz, (w - x) << 2);
-            pixel_copy(top, &dst[-PXSTRIDE(stride)], px_have);
+            pixel_copy(top, dst_top, px_have);
             if (px_have < sz)
                 pixel_set(top + px_have, top[px_have - 1], sz - px_have);
         } else {
@@ -153,7 +159,7 @@ bytefn(prepare_intra_edges)(const int x, const int have_left,
             if (have_topright) {
                 const int px_have = imin(sz, (w - x - tw) << 2);
 
-                pixel_copy(top + sz, &dst[sz - PXSTRIDE(stride)], px_have);
+                pixel_copy(top + sz, &dst_top[sz], px_have);
                 if (px_have < sz)
                     pixel_set(top + sz + px_have, top[sz + px_have - 1],
                               sz - px_have);
@@ -163,9 +169,16 @@ bytefn(prepare_intra_edges)(const int x, const int have_left,
         }
     }
 
-    if (mode == Z2_PRED && tw + th >= 6)
-        *topleft_out = (topleft_out[-1] * 5 + topleft_out[0] * 6 +
-                        topleft_out[1] * 5 + 8) >> 4;
+    if (av1_intra_prediction_edges[mode].needs_topleft) {
+        if (have_left) {
+            *topleft_out = have_top ? dst_top[-1] : dst[-1];
+        } else {
+            *topleft_out = have_top ? *dst_top : (1 << BITDEPTH) >> 1;
+        }
+        if (mode == Z2_PRED && tw + th >= 6)
+            *topleft_out = (topleft_out[-1] * 5 + topleft_out[0] * 6 +
+                            topleft_out[1] * 5 + 8) >> 4;
+    }
 
     return mode;
 }

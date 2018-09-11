@@ -8,6 +8,8 @@
 #include <stdint.h>
 
 #include "src/levels.h"
+#include "src/ref.h"
+#include "src/thread_data.h"
 
 typedef struct CdfModeContext {
     uint16_t y_mode[4][N_INTRA_PRED_MODES + 1];
@@ -99,8 +101,25 @@ typedef struct CdfContext {
     CdfMvContext mv, dmv;
 } CdfContext;
 
-void av1_init_states(CdfContext *cdf, int qidx);
+typedef struct CdfThreadContext {
+    CdfContext *cdf;
+    Dav1dRef *ref; ///< allocation origin
+    struct thread_data *t;
+    atomic_uint *progress;
+} CdfThreadContext;
+
+void av1_init_states(CdfThreadContext *cdf, int qidx);
 void av1_update_tile_cdf(const Av1FrameHeader *hdr, CdfContext *dst,
                          const CdfContext *src);
+
+void cdf_thread_alloc(CdfThreadContext *cdf, struct thread_data *t);
+void cdf_thread_ref(CdfThreadContext *dst, CdfThreadContext *src);
+void cdf_thread_unref(CdfThreadContext *cdf);
+
+/*
+ * These are binary signals (so a signal is either "done" or "not done").
+ */
+void cdf_thread_wait(CdfThreadContext *cdf);
+void cdf_thread_signal(CdfThreadContext *cdf);
 
 #endif /* __AV1_CDF_H__ */

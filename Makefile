@@ -36,6 +36,7 @@ LIBDAV1D_OBJS = \
 	src/intra_edge.o \
 	src/lf_mask.o \
 	src/ref_mvs.o \
+	src/thread_task.o \
 	src/warpmv.o \
 	src/wedge.o \
 	src/qm.o
@@ -85,6 +86,13 @@ include/version.h: FORCE
 %.d: %.asm
 	@mkdir -p $(dir $@)
 	${YASM} $(YASMFLAGS) -M -o $(@:.d=.o) $< > $@
+
+SRA_OBJS = \
+	src/lib.o \
+	src/thread_task.o
+
+$(LIBDAV1D_OBJS): override CFLAGS += ${SAFLAGS}
+$(SRA_OBJS): override CFLAGS += ${SRAFLAGS}
 
 clean:
 	rm -f ${LIBDAV1D_OBJS} ${DAV1D_OBJS}

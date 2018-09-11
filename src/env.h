@@ -470,24 +470,6 @@ static inline int get_drl_context(const candidate_mv *const ref_mv_stack,
     return 0;
 }
 
-static inline unsigned get_prev_frame_segid(const int by, const int bx,
-                                            const int w4, int h4,
-                                            const uint8_t *ref_seg_map,
-                                            const ptrdiff_t stride)
-{
-    unsigned seg_id = 8;
-
-    ref_seg_map += by * stride + bx;
-    do {
-        for (int x = 0; x < w4; x++)
-            seg_id = imin(seg_id, ref_seg_map[x]);
-        ref_seg_map += stride;
-    } while (--h4 > 0);
-    assert(seg_id < 8);
-
-    return seg_id;
-}
-
 static inline unsigned get_cur_frame_segid(const int by, const int bx,
                                            const int have_top,
                                            const int have_left,

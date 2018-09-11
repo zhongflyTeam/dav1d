@@ -31,6 +31,10 @@ static inline int ulog2(const unsigned v) {
     return 31 - __builtin_clz(v);
 }
 
+static inline int u64log2(const uint64_t v) {
+    return 63 - __builtin_clzll(v);
+}
+
 static inline unsigned rl16(const uint8_t *const ptr) {
     return (ptr[1] << 8) | ptr[0];
 }

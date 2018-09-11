@@ -4,6 +4,7 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 
 #include "common/intops.h"
@@ -351,6 +352,7 @@ static int parse_frame_hdr(Dav1dContext *const c, GetBits *const gb,
         if ((res = read_frame_size(c, gb, 0)) < 0) goto error;
         hdr->allow_intrabc = hdr->allow_screen_content_tools &&
                              /* FIXME: no superres scaling && */ get_bits(gb, 1);
+        hdr->use_ref_frame_mvs = 0;
     } else {
         if (hdr->error_resilient_mode && seqhdr->order_hint)
             for (int i = 0; i < 8; i++)
@@ -959,8 +961,32 @@ int parse_obus(Dav1dContext *const c, Dav1dData *const in) {
     } else if (c->have_seq_hdr && c->have_frame_hdr &&
                c->frame_hdr.show_existing_frame)
     {
-        dav1d_picture_ref(&c->out,
-                          &c->refs[c->frame_hdr.existing_frame_idx].p.p);
+        if (c->n_fc == 1) {
+            dav1d_picture_ref(&c->out,
+                              &c->refs[c->frame_hdr.existing_frame_idx].p.p);
+        } else {
+            // need to append this to the frame output queue
+            const unsigned next = c->frame_thread.next++;
+            if (c->frame_thread.next == c->n_fc)
+                c->frame_thread.next = 0;
+
+            Dav1dFrameContext *const f = &c->fc[next];
+            pthread_mutex_lock(&f->frame_thread.td.lock);
+            while (f->n_tile_data > 0)
+                pthread_cond_wait(&f->frame_thread.td.cond,
+                                  &f->frame_thread.td.lock);
+            Dav1dThreadPicture *const out_delayed =
+                &c->frame_thread.out_delayed[next];
+            if (out_delayed->p.data[0]) {
+                if (out_delayed->visible)
+                    dav1d_picture_ref(&c->out, &out_delayed->p);
+                dav1d_thread_picture_unref(out_delayed);
+            }
+            dav1d_thread_picture_ref(out_delayed,
+                                     &c->refs[c->frame_hdr.existing_frame_idx].p);
+            out_delayed->visible = 1;
+            pthread_mutex_unlock(&f->frame_thread.td.lock);
+        }
         c->have_frame_hdr = 0;
     }
 

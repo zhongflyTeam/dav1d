@@ -56,6 +56,7 @@ enum IntraPredMode
     bytefn(prepare_intra_edges)(int x, int have_left, int y, int have_top,
                                 int w, int h, enum EdgeFlags edge_flags,
                                 const pixel *dst, ptrdiff_t stride,
+                                const pixel *prefilter_toplevel_sb_edge,
                                 enum IntraPredMode mode, int *angle,
                                 int tw, int th, pixel *topleft_out);
 

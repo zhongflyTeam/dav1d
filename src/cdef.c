@@ -48,6 +48,7 @@ static void fill(uint16_t *tmp, const ptrdiff_t stride,
 
 /* Smooth in the direction detected. */
 static void cdef_filter_block_c(pixel *const dst, const ptrdiff_t dst_stride,
+                                /*const*/ pixel *const top[2],
                                 const int w, const int h, const int pri_strength,
                                 const int sec_strength, const int dir,
                                 const int damping, const enum CdefEdgeFlags edges)
@@ -76,7 +77,10 @@ static void cdef_filter_block_c(pixel *const dst, const ptrdiff_t dst_stride,
              2, y_end - y_start);
         x_end -= 2;
     }
-    for (int y = y_start; y < y_end; y++)
+    for (int y = y_start; y < 0; y++)
+        for (int x = x_start; x < x_end; x++)
+            tmp[(y + 2) * tmp_stride + (x + 2)] = top[y & 1][x];
+    for (int y = 0; y < y_end; y++)
         for (int x = x_start; x < x_end; x++)
             tmp[(y + 2) * tmp_stride + (x + 2)] = dst[y * PXSTRIDE(dst_stride) + x];
 
@@ -130,13 +134,14 @@ static void cdef_filter_block_c(pixel *const dst, const ptrdiff_t dst_stride,
 #define cdef_fn(w, h) \
 static void cdef_filter_block_##w##x##h##_c(pixel *const dst, \
                                             const ptrdiff_t stride, \
+                                            /*const*/ pixel *const top[2], \
                                             const int pri_strength, \
                                             const int sec_strength, \
                                             const int dir, \
                                             const int damping, \
                                             const enum CdefEdgeFlags edges) \
 { \
-    cdef_filter_block_c(dst, stride, w, h, pri_strength, sec_strength, \
+    cdef_filter_block_c(dst, stride, top, w, h, pri_strength, sec_strength, \
                         dir, damping, edges); \
 }
 

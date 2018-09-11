@@ -21,14 +21,19 @@ enum LrEdgeFlags {
 // filter can be applied to a bigger surface.
 //    * w is constrained by the restoration unit size (w <= 256)
 //    * h is constrained by the stripe height (h <= 64)
-typedef void (*wienerfilter_fn)(pixel *dst, const ptrdiff_t dst_stride,
-                                const pixel *lpf, const ptrdiff_t lpf_stride,
-                                const int w, const int h,
-                                const int16_t filterh[7], const int16_t filterv[7],
-                                const enum LrEdgeFlags edges);
+typedef void (*wienerfilter_fn)(pixel *dst, ptrdiff_t dst_stride,
+                                const pixel *lpf, ptrdiff_t lpf_stride,
+                                int w, int h, const int16_t filterh[7],
+                                const int16_t filterv[7], enum LrEdgeFlags edges);
+
+typedef void (*selfguided_fn)(pixel *dst, ptrdiff_t dst_stride,
+                              const pixel *lpf, ptrdiff_t lpf_stride,
+                              int w, int h, int sgr_idx, const int16_t sgr_w[2],
+                              const enum LrEdgeFlags edges);
 
 typedef struct Dav1dLoopRestorationDSPContext {
-    wienerfilter_fn wiener_filter;
+    wienerfilter_fn wiener;
+    selfguided_fn selfguided;
 } Dav1dLoopRestorationDSPContext;
 
 void dav1d_loop_restoration_dsp_init_8bpc(Dav1dLoopRestorationDSPContext *c);

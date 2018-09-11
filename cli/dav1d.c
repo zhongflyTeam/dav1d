@@ -100,16 +100,16 @@ int main(const int argc, char *const *const argv) {
 
         if (cli_settings.limit && n_out == cli_settings.limit)
             break;
-    } while (!input_read(in, &data));
+    } while (data.sz > 0 || !input_read(in, &data));
 
     // flush
-    if (res == 0) while (n_out < cli_settings.limit) {
+    if (res == 0) while (!cli_settings.limit || n_out < cli_settings.limit) {
         if ((res = dav1d_decode(c, NULL, &p)) < 0) {
-            if (res == -EAGAIN) res = 0;
-            else {
+            if (res != -EAGAIN) {
                 fprintf(stderr, "Error decoding frame: %s\n",
                         strerror(-res));
-            }
+            } else
+                res = 0;
             break;
         } else {
             if (!n_out) {

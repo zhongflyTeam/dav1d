@@ -192,7 +192,7 @@ static inline void filter_plane_rows_uv(const Dav1dFrameContext *const f,
 
 void bytefn(dav1d_loopfilter_sbrow)(const Dav1dFrameContext *const f,
                                     pixel *const p[3], Av1Filter *const lflvl,
-                                    int sby)
+                                    int sby, const int start_of_tile_row)
 {
     int x, have_left;
     const int have_top = sby > 0;
@@ -200,7 +200,7 @@ void bytefn(dav1d_loopfilter_sbrow)(const Dav1dFrameContext *const f,
     const int starty4 = (sby & is_sb64) << 4;
     const int sbsz = 32 >> is_sb64;
     const int sbl2 = 5 - is_sb64;
-    const int endy4 = starty4 + sbsz;
+    const int endy4 = starty4 + imin(f->bh - sby * f->sb_step, sbsz);
     const int halign = (f->bh + 31) & ~31;
     const int ss_ver = f->cur.p.p.layout == DAV1D_PIXEL_LAYOUT_I420;
     const int ss_hor = f->cur.p.p.layout != DAV1D_PIXEL_LAYOUT_I444;
@@ -230,6 +230,36 @@ void bytefn(dav1d_loopfilter_sbrow)(const Dav1dFrameContext *const f,
         }
         lpf_y  += halign;
         lpf_uv += halign >> ss_ver;
+    }
+
+    // fix lpf strength at tile row boundaries
+    if (start_of_tile_row) {
+        const BlockContext *a;
+        for (x = 0, a = &f->a[f->sb128w * (start_of_tile_row - 1)];
+             x < f->sb128w; x++, a++)
+        {
+            uint32_t *const y_vmask = lflvl[x].filter_y[1][starty4];
+            const unsigned y_vm = y_vmask[0] | y_vmask[1] | y_vmask[2];
+
+            for (unsigned mask = 1, i = 0; i < 32; mask <<= 1, i++) {
+                if (!(y_vm & mask)) continue;
+                const int idx = 2 * !!(y_vmask[2] & mask) + !!(y_vmask[1] & mask);
+                y_vmask[2] &= ~mask;
+                y_vmask[1] &= ~mask;
+                y_vmask[0] &= ~mask;
+                y_vmask[imin(idx, a->tx_lpf_y[i])] |= mask;
+            }
+
+            uint32_t *const uv_vmask = lflvl[x].filter_uv[1][starty4 >> ss_ver];
+            const unsigned uv_vm = uv_vmask[0] | uv_vmask[1];
+            for (unsigned mask = 1, i = 0; i < (32 >> ss_hor); mask <<= 1, i++) {
+                if (!(uv_vm & mask)) continue;
+                const int idx = !!(uv_vmask[1] & mask);
+                uv_vmask[1] &= ~mask;
+                uv_vmask[0] &= ~mask;
+                uv_vmask[imin(idx, a->tx_lpf_uv[i])] |= mask;
+            }
+        }
     }
 
     pixel *ptr;

@@ -68,13 +68,21 @@ static int picture_alloc_with_edges(Dav1dPicture *const p,
 int dav1d_thread_picture_alloc(Dav1dThreadPicture *const p,
                                const int w, const int h,
                                const enum Dav1dPixelLayout layout, const int bpc,
-                               struct thread_data *const t)
+                               struct thread_data *const t, const int visible)
 {
     p->t = t;
 
-    return picture_alloc_with_edges(&p->p, w, h, layout, bpc,
-                                    t != NULL ? sizeof(atomic_int) : 0,
-                                    (void **) &p->progress);
+    const int res =
+        picture_alloc_with_edges(&p->p, w, h, layout, bpc,
+                                 t != NULL ? sizeof(atomic_int) * 2 : 0,
+                                 (void **) &p->progress);
+
+    p->visible = visible;
+    if (t) {
+        atomic_init(&p->progress[0], 0);
+        atomic_init(&p->progress[1], 0);
+    }
+    return res;
 }
 
 void dav1d_picture_ref(Dav1dPicture *const dst, const Dav1dPicture *const src) {
@@ -94,6 +102,7 @@ void dav1d_thread_picture_ref(Dav1dThreadPicture *dst,
 {
     dav1d_picture_ref(&dst->p, &src->p);
     dst->t = src->t;
+    dst->visible = src->visible;
     dst->progress = src->progress;
 }
 
@@ -115,24 +124,41 @@ void dav1d_thread_picture_unref(Dav1dThreadPicture *const p) {
 }
 
 void dav1d_thread_picture_wait(const Dav1dThreadPicture *const p,
-                               const int y_in, const enum PlaneType plane_type)
+                               int y_unclipped, const enum PlaneType plane_type)
 {
+    assert(plane_type != PLANE_TYPE_ALL);
+
     if (!p->t)
         return;
 
-    static const int plane_delay[] = { 16, 8, 0 };
-
     // convert to luma units; include plane delay from loopfilters; clip
-    const int y_unclipped =
-        (y_in + plane_delay[plane_type]) << (plane_type & 1);
+    const int ss_ver = p->p.p.layout != DAV1D_PIXEL_LAYOUT_I444;
+    y_unclipped <<= plane_type & ss_ver; // we rely here on PLANE_TYPE_UV being 1
+    y_unclipped += (plane_type != PLANE_TYPE_BLOCK) * 8; // delay imposed by loopfilter
     const int y = iclip(y_unclipped, 0, p->p.p.h - 1);
+    atomic_uint *const progress = &p->progress[plane_type != PLANE_TYPE_BLOCK];
 
-    if (atomic_load_explicit(p->progress, memory_order_acquire) >= y)
+    if (atomic_load_explicit(progress, memory_order_acquire) >= y)
         return;
 
     pthread_mutex_lock(&p->t->lock);
-    while (atomic_load_explicit(p->progress, memory_order_relaxed) < y) {
+    while (atomic_load_explicit(progress, memory_order_relaxed) < y)
         pthread_cond_wait(&p->t->cond, &p->t->lock);
-    }
+    pthread_mutex_unlock(&p->t->lock);
+}
+
+void dav1d_thread_picture_signal(const Dav1dThreadPicture *const p,
+                                 const int y, // in pixel units
+                                 const enum PlaneType plane_type)
+{
+    assert(plane_type != PLANE_TYPE_UV);
+
+    if (!p->t)
+        return;
+
+    pthread_mutex_lock(&p->t->lock);
+    if (plane_type != PLANE_TYPE_Y) atomic_store(&p->progress[0], y);
+    if (plane_type != PLANE_TYPE_BLOCK) atomic_store(&p->progress[1], y);
+    pthread_cond_broadcast(&p->t->cond);
     pthread_mutex_unlock(&p->t->lock);
 }

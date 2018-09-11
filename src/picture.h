@@ -10,23 +10,22 @@
 
 #include "include/picture.h"
 
+#include "src/thread_data.h"
+
 enum PlaneType {
     PLANE_TYPE_Y,
     PLANE_TYPE_UV,
     PLANE_TYPE_BLOCK,
-    N_PLANE_TYPES,
-};
-
-struct thread_data {
-    pthread_t thread;
-    pthread_cond_t cond;
-    pthread_mutex_t lock;
+    PLANE_TYPE_ALL,
 };
 
 typedef struct Dav1dThreadPicture {
     Dav1dPicture p;
+    int visible;
     struct thread_data *t;
-    atomic_int *progress;
+    // [0] block data (including segmentation map and motion vectors)
+    // [1] pixel data
+    atomic_uint *progress;
 } Dav1dThreadPicture;
 
 /*
@@ -34,7 +33,7 @@ typedef struct Dav1dThreadPicture {
  */
 int dav1d_thread_picture_alloc(Dav1dThreadPicture *p, int w, int h,
                                enum Dav1dPixelLayout layout, int bpc,
-                               struct thread_data *t);
+                               struct thread_data *t, int visible);
 
 /**
  * Create a copy of a picture.
@@ -49,10 +48,21 @@ void dav1d_thread_picture_unref(Dav1dThreadPicture *p);
  *
  * y is in full-pixel units. If pt is not UV, this is in luma
  * units, else it is in chroma units.
- * PLANE_TYPE defines how many pixels delay are introduced by
- * loopfilter processes.
+ * plane_type is used to determine how many pixels delay are
+ * introduced by loopfilter processes.
  */
 void dav1d_thread_picture_wait(const Dav1dThreadPicture *p, int y,
                                enum PlaneType plane_type);
+
+/**
+ * Signal decoding progress.
+ *
+ * y is in full-pixel luma units.
+ * plane_type denotes whether we have completed block data (pass 1;
+ * PLANE_TYPE_BLOCK), pixel data (pass 2, PLANE_TYPE_Y) or both (no
+ * 2-pass decoding; PLANE_TYPE_ALL).
+ */
+void dav1d_thread_picture_signal(const Dav1dThreadPicture *p, int y,
+                                 enum PlaneType plane_type);
 
 #endif /* __DAV1D_SRC_PICTURE_H__ */

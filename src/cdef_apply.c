@@ -28,24 +28,6 @@ static void backup2lines(pixel *const dst[3][2],
     pixel_copy(dst[2][1], src[2] + (y_off - 1) * PXSTRIDE(src_stride[1]), w);
 }
 
-static void restore2lines(pixel *const dst[3],
-                          const ptrdiff_t dst_stride[2],
-                          /*const*/ pixel *const src[3][2],
-                          int w, const enum Dav1dPixelLayout layout)
-{
-    pixel_copy(dst[0] - 2 * PXSTRIDE(dst_stride[0]), src[0][0], w);
-    pixel_copy(dst[0] - 1 * PXSTRIDE(dst_stride[0]), src[0][1], w);
-
-    if (layout == DAV1D_PIXEL_LAYOUT_I400) return;
-    const int ss_hor = layout != DAV1D_PIXEL_LAYOUT_I444;
-
-    w >>= ss_hor;
-    pixel_copy(dst[1] - 2 * PXSTRIDE(dst_stride[1]), src[1][0], w);
-    pixel_copy(dst[1] - 1 * PXSTRIDE(dst_stride[1]), src[1][1], w);
-    pixel_copy(dst[2] - 2 * PXSTRIDE(dst_stride[1]), src[2][0], w);
-    pixel_copy(dst[2] - 1 * PXSTRIDE(dst_stride[1]), src[2][1], w);
-}
-
 static void backup2x8(pixel dst[3][8][2],
                       /*const*/ pixel *const src[3],
                       const ptrdiff_t src_stride[2], int x_off,
@@ -87,7 +69,7 @@ static int adjust_strength(const int strength, const unsigned var) {
     return (strength * (4 + i) + 8) >> 4;
 }
 
-void bytefn(dav1d_cdef_brow)(const Dav1dFrameContext *const f,
+void bytefn(dav1d_cdef_brow)(Dav1dFrameContext *const f,
                              pixel *const p[3],
                              const Av1Filter *const lflvl,
                              const int by_start, const int by_end)
@@ -110,20 +92,12 @@ void bytefn(dav1d_cdef_brow)(const Dav1dFrameContext *const f,
     // unnecessary as well.
 
     for (int by = by_start; by < by_end; by += 2, edges |= HAVE_TOP) {
+        const int tf = f->lf.top_pre_cdef_toggle;
         if (by + 2 >= f->bh) edges &= ~HAVE_BOTTOM;
 
-        if (edges & HAVE_TOP) {
-            // backup post-filter data (will be restored at the end)
-            backup2lines(f->lf.cdef_line_ptr[1], ptrs, f->cur.p.stride,
-                         0, f->bw * 4, layout);
-
-            // restore pre-filter data from last iteration
-            restore2lines(ptrs, f->cur.p.stride, f->lf.cdef_line_ptr[0],
-                          f->bw * 4, layout);
-        }
         if (edges & HAVE_BOTTOM) {
             // backup pre-filter data for next iteration
-            backup2lines(f->lf.cdef_line_ptr[0], ptrs, f->cur.p.stride,
+            backup2lines(f->lf.cdef_line_ptr[!tf], ptrs, f->cur.p.stride,
                          8, f->bw * 4, layout);
         }
 
@@ -188,6 +162,10 @@ void bytefn(dav1d_cdef_brow)(const Dav1dFrameContext *const f,
                                               &variance);
                 if (y_lvl) {
                     dsp->cdef.fb[0](bptrs[0], f->cur.p.stride[0],
+                                    (pixel *const [2]) {
+                                        &f->lf.cdef_line_ptr[tf][0][0][bx * 4],
+                                        &f->lf.cdef_line_ptr[tf][0][1][bx * 4],
+                                    },
                                     adjust_strength(y_pri_lvl, variance),
                                     y_sec_lvl, y_pri_lvl ? dir : 0,
                                     damping, edges);
@@ -198,6 +176,10 @@ void bytefn(dav1d_cdef_brow)(const Dav1dFrameContext *const f,
                         ((uint8_t[]) { 7, 0, 2, 4, 5, 6, 6, 6 })[dir];
                     for (int pl = 1; pl <= 2; pl++) {
                         dsp->cdef.fb[uv_idx](bptrs[pl], f->cur.p.stride[1],
+                                             (pixel *const [2]) {
+                                                 &f->lf.cdef_line_ptr[tf][pl][0][bx * 4 >> ss_hor],
+                                                 &f->lf.cdef_line_ptr[tf][pl][1][bx * 4 >> ss_hor],
+                                             },
                                              uv_pri_lvl, uv_sec_lvl,
                                              uv_pri_lvl ? uvdir : 0,
                                              damping - 1, edges);
@@ -222,14 +204,9 @@ void bytefn(dav1d_cdef_brow)(const Dav1dFrameContext *const f,
             iptrs[2] += sbsz * 4 >> ss_hor;
         }
 
-        if (edges & HAVE_TOP) {
-            // restore post-filter data from the beginning of this loop
-            restore2lines(ptrs, f->cur.p.stride, f->lf.cdef_line_ptr[1],
-                          f->bw * 4, layout);
-        }
-
         ptrs[0] += 8 * PXSTRIDE(f->cur.p.stride[0]);
         ptrs[1] += 8 * PXSTRIDE(f->cur.p.stride[1]) >> ss_ver;
         ptrs[2] += 8 * PXSTRIDE(f->cur.p.stride[1]) >> ss_ver;
+        f->lf.top_pre_cdef_toggle ^= 1;
     }
 }

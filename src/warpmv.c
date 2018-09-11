@@ -79,10 +79,6 @@ int get_shear_params(WarpedMotionParams *const wm) {
            (4 * abs(wm->gamma) + 4 * abs(wm->delta) >= 0x10000);
 }
 
-static inline int u64log2(const uint64_t v) {
-    return 63 - __builtin_clzll(v);
-}
-
 static int resolve_divisor_64(const uint64_t d, int *const shift) {
     *shift = u64log2(d);
     const int64_t e = d - (1LL << *shift);

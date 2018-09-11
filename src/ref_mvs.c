@@ -2499,7 +2499,6 @@ static int motion_field_projection(AV1_COMMON *cm, MV_REFERENCE_FRAME ref_frame,
                                    const int from_y4, const int to_y4) {
   TPL_MV_REF *tpl_mvs_base = cm->tpl_mvs;
   int ref_offset[TOTAL_REFS_PER_FRAME] = { 0 };
-  int ref_dir[TOTAL_REFS_PER_FRAME];
 
   (void)dir;
 
@@ -2522,7 +2521,6 @@ static int motion_field_projection(AV1_COMMON *cm, MV_REFERENCE_FRAME ref_frame,
   for (MV_REFERENCE_FRAME rf = LAST_FRAME; rf <= INTER_REFS_PER_FRAME; ++rf) {
     ref_offset[rf] =
         get_relative_dist(cm, ref_frame_index, ref_rf_idx[rf - LAST_FRAME]);
-    ref_dir[rf] = ref_rf_idx[rf - LAST_FRAME] > ref_frame_index;
   }
 
   if (dir == 2) ref_to_cur = -ref_to_cur;
@@ -2544,12 +2542,12 @@ static int motion_field_projection(AV1_COMMON *cm, MV_REFERENCE_FRAME ref_frame,
                                      (blk_col << 1) + 1];
       int diridx;
       const int ref0 = mv_ref->ref_frame[0], ref1 = mv_ref->ref_frame[1];
-      if  (ref1 > 0 && (dir & 1) == ref_dir[ref1] &&
-         abs(mv_ref->mv[1].as_mv.row) < (1 << 12) &&
+      if (ref1 > 0 && ref_offset[ref1] > 0 &&
+          abs(mv_ref->mv[1].as_mv.row) < (1 << 12) &&
           abs(mv_ref->mv[1].as_mv.col) < (1 << 12))
       {
         diridx = 1;
-      } else if (ref0 > 0 && (dir & 1) == ref_dir[ref0] &&
+      } else if (ref0 > 0 && ref_offset[ref0] > 0 &&
                  abs(mv_ref->mv[0].as_mv.row) < (1 << 12) &&
                  abs(mv_ref->mv[0].as_mv.col) < (1 << 12))
       {
@@ -3396,15 +3394,27 @@ void av1_find_ref_mvs(CANDIDATE_MV *mvstack, int *cnt, int_mv (*mvlist)[2],
     {
         MV_REF *l = bx4 ? &cm->cur_frame.mvs[by4*stride+bx4-1] : NULL;
         MV_REF *a = by4 ? &cm->cur_frame.mvs[by4*stride+bx4-stride] : NULL;
-        printf("Input: left=%d,%d,%d,%d, above=%d,%d,%d,%d [use_ref=%d]\n",
+        printf("Input: left=[0]y:%d,x:%d,r:%d,[1]y:%d,x:%d,r:%d,mode=%d, "
+               "above=[0]y:%d,x:%d,r:%d,[1]y:%d,x:%d,r:%d,mode=%d, "
+               "temp=y:%d,x:%d,r:%d [use_ref=%d]\n",
                l ? l->mv[0].as_mv.row : -1,
                l ? l->mv[0].as_mv.col : -1,
                l ? l->ref_frame[0]: -1,
+               l ? l->mv[1].as_mv.row : -1,
+               l ? l->mv[1].as_mv.col : -1,
+               l ? l->ref_frame[1]: -1,
                l ? l->mode : -1,
                a ? a->mv[0].as_mv.row: -1,
                a ? a->mv[0].as_mv.col : -1,
                a ? a->ref_frame[0] : -1,
+               a ? a->mv[1].as_mv.row: -1,
+               a ? a->mv[1].as_mv.col : -1,
+               a ? a->ref_frame[1] : -1,
                a ? a->mode : -1,
+               cm->tpl_mvs[(by4 >> 1) * (cm->mi_stride >> 1) + (bx4 >> 1)].mfmv0.as_mv.row,
+               cm->tpl_mvs[(by4 >> 1) * (cm->mi_stride >> 1) + (bx4 >> 1)].mfmv0.as_mv.col,
+               cm->tpl_mvs[(by4 >> 1) * (cm->mi_stride >> 1) +
+                           (bx4 >> 1)].ref_frame_offset,
                cm->allow_ref_frame_mvs);
         printf("Edges: l=%d,t=%d,r=%d,b=%d,w=%d,h=%d,border=%d\n",
                xd.mb_to_left_edge,
@@ -3454,7 +3464,10 @@ void av1_init_ref_mv_common(AV1_COMMON *cm,
                             const unsigned ref_poc[7],
                             const unsigned ref_ref_poc[7][7],
                             const WarpedMotionParams gmv[7],
-                            const int allow_hp, const int allow_ref_frame_mvs)
+                            const int allow_hp,
+                            const int force_int_mv,
+                            const int allow_ref_frame_mvs,
+                            const int order_hint)
 {
     if (cm->mi_cols != (w8 << 1) || cm->mi_rows != (h8 << 1)) {
         const int align_h = (h8 + 15) & ~15;
@@ -3476,11 +3489,11 @@ void av1_init_ref_mv_common(AV1_COMMON *cm,
     cm->allow_high_precision_mv = allow_hp;
     cm->seq_params.sb_size = allow_sb128 ? BLOCK_128X128 : BLOCK_64X64;
 
+    cm->seq_params.enable_order_hint = !!order_hint;
+    cm->seq_params.order_hint_bits_minus1 = order_hint - 1;
     // FIXME get these from the sequence/frame headers instead of hardcoding
-    cm->seq_params.enable_order_hint = 1;
-    cm->seq_params.order_hint_bits_minus1 = 7;
     cm->frame_parallel_decode = 0;
-    cm->cur_frame_force_integer_mv = 0;
+    cm->cur_frame_force_integer_mv = force_int_mv;
 
     memcpy(&cm->global_motion[1], gmv, sizeof(*gmv) * 7);
 
@@ -3498,7 +3511,7 @@ void av1_init_ref_mv_common(AV1_COMMON *cm,
     av1_setup_frame_buf_refs(cm);
     for (int i = 0; i < 7; i++) {
         const int ref_poc = cm->buffer_pool.frame_bufs[i].cur_frame_offset;
-        cm->ref_frame_sign_bias[1 + i] = ref_poc > cur_poc;
+        cm->ref_frame_sign_bias[1 + i] = get_relative_dist(cm, ref_poc, cur_poc) > 0;
     }
     av1_setup_motion_field(cm);
 }

@@ -458,6 +458,7 @@ typedef struct Av1FrameHeader {
 #define QINDEX_RANGE 256
 
 typedef struct Av1Block {
+    uint8_t bl, bs, bp;
     uint8_t intra, seg_id, skip_mode, skip, uvtx;
     union {
         struct {
@@ -468,10 +469,9 @@ typedef struct Av1Block {
             int8_t ref[2];
             uint8_t comp_type, wedge_idx, mask_sign, inter_mode, drl_idx;
             uint8_t interintra_type, interintra_mode, motion_mode;
-            uint8_t max_ytx, filter[2];
+            uint8_t max_ytx, filter2d;
             uint16_t tx_split[2];
             mv mv[2];
-            WarpedMotionParams warpmv;
         }; // inter
     };
 } Av1Block;
