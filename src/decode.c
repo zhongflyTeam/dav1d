@@ -2483,6 +2483,12 @@ int decode_frame(Dav1dFrameContext *const f) {
         } else {
             // signal available tasks to worker threads
             int num_tasks;
+
+            const uint64_t all_mask = ~0ULL >> (64 - f->n_tc);
+            pthread_mutex_lock(&f->tile_thread.lock);
+            while (f->tile_thread.available != all_mask)
+                pthread_cond_wait(&f->tile_thread.icond, &f->tile_thread.lock);
+            assert(!f->tile_thread.tasks_left);
             if (f->frame_thread.pass == 1 || f->n_tc >= f->frame_hdr.tiling.cols) {
                 // we can (or in fact, if >, we need to) do full tile decoding.
                 // loopfilter happens below
@@ -2493,7 +2499,6 @@ int decode_frame(Dav1dFrameContext *const f) {
                 // waiting for the post-filter to complete
                 num_tasks = f->sbh * f->frame_hdr.tiling.cols;
             }
-            pthread_mutex_lock(&f->tile_thread.lock);
             f->tile_thread.num_tasks = f->tile_thread.tasks_left = num_tasks;
             pthread_cond_broadcast(&f->tile_thread.cond);
             pthread_mutex_unlock(&f->tile_thread.lock);
@@ -2525,15 +2530,6 @@ int decode_frame(Dav1dFrameContext *const f) {
                                                 progress_plane_type);
                 }
             }
-
-#ifndef NDEBUG
-            // wait for all threads to finish
-            const uint64_t all_mask = ~0ULL >> (64 - f->n_tc);
-            pthread_mutex_lock(&f->tile_thread.lock);
-            assert(f->tile_thread.available == all_mask);
-            assert(!f->tile_thread.tasks_left);
-            pthread_mutex_unlock(&f->tile_thread.lock);
-#endif
         }
 
         if (f->frame_thread.pass <= 1 && f->frame_hdr.refresh_context) {
