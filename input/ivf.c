@@ -45,7 +45,16 @@ static int ivf_open(IvfInputContext *const c, const char *const file,
 
     fps[0] = rl32(&hdr[16]);
     fps[1] = rl32(&hdr[20]);
-    *num_frames = rl32(&hdr[24]);
+    const unsigned duration = rl32(&hdr[24]);
+    uint8_t data[4];
+    for (*num_frames = 0;; (*num_frames)++) {
+        if ((res = fread(data, 4, 1, c->f)) != 1)
+            break; // EOF
+        fseek(c->f, rl32(data) + 8, SEEK_CUR);
+    }
+    fps[0] *= *num_frames;
+    fps[1] *= duration;
+    fseek(c->f, 32, SEEK_SET);
 
     return 0;
 }
@@ -56,7 +65,7 @@ static int ivf_read(IvfInputContext *const c, Dav1dData *const buf) {
 
     if ((res = fread(data, 4, 1, c->f)) != 1)
         return -1; // EOF
-    fseek(c->f, 8, SEEK_CUR);
+    fseek(c->f, 8, SEEK_CUR); // skip timestamp
     const ptrdiff_t sz = rl32(data);
     dav1d_data_create(buf, sz);
     if ((res = fread(buf->data, sz, 1, c->f)) != 1)
