@@ -45,7 +45,9 @@ if cc.has_argument('-fvisibility=hidden')
 else
     warning('Compiler does not support -fvisibility=hidden, all symbols will be public!')
 endif
-    
+
+add_project_arguments('-fomit-frame-pointer', '-ffast-math',
+    language: 'c')
 
 subdir('include')
 
