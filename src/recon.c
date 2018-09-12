@@ -574,7 +574,7 @@ static void obmc(Dav1dTileContext *const t,
                    t->bx, t->by + y, pl, l_r->mv[0],
                    &f->refp[l_r->ref[0] - 1],
                    av1_filter_2d[t->l.filter[1][by4 + y + 1]][t->l.filter[0][by4 + y + 1]]);
-                f->dsp->mc.blend(&dst[y * v_mul * dst_stride], dst_stride,
+                f->dsp->mc.blend(&dst[y * v_mul * PXSTRIDE(dst_stride)], dst_stride,
                                  lap, 32 * sizeof(pixel),
                                  h_mul * imin(b_dim[0], 16) >> 1,
                                  v_mul * iclip(l_b_dim[1], 2, b_dim[1]),
@@ -1034,7 +1034,7 @@ void bytefn(recon_b_inter)(Dav1dTileContext *const t, const enum BlockSize bs,
         mc(t, dst, NULL, f->cur.p.stride[0],
            bw4, bh4, t->bx, t->by, 0, b->mv[0], &f->cur, FILTER_2D_BILINEAR);
         if (has_chroma) for (int pl = 1; pl < 3; pl++)
-            mc(t, f->cur.p.data[pl] + uvdstoff, NULL, f->cur.p.stride[1],
+            mc(t, ((pixel *) f->cur.p.data[pl]) + uvdstoff, NULL, f->cur.p.stride[1],
                bw4 << (bw4 == ss_hor), bh4 << (bh4 == ss_ver),
                t->bx & ~ss_hor, t->by & ~ss_ver,
                pl, b->mv[0], &f->cur, FILTER_2D_BILINEAR);
@@ -1075,12 +1075,12 @@ void bytefn(recon_b_inter)(Dav1dTileContext *const t, const enum BlockSize bs,
                                             ts->tiling.col_end, ts->tiling.row_end,
                                             0, dst, f->cur.p.stride[0], top_sb_edge,
                                             m, &angle, bw4, bh4, tl_edge);
-            dsp->ipred.intra_pred[ii_tx][m](tmp, 4 * bw4, tl_edge, 0);
+            dsp->ipred.intra_pred[ii_tx][m](tmp, 4 * bw4 * sizeof(pixel), tl_edge, 0);
             const uint8_t *const ii_mask =
                 b->interintra_type == INTER_INTRA_BLEND ?
                      ii_masks[bs][0][b->interintra_mode] :
                      wedge_masks[bs][0][0][b->wedge_idx];
-            dsp->mc.blend(dst, f->cur.p.stride[0], tmp, bw4 * 4,
+            dsp->mc.blend(dst, f->cur.p.stride[0], tmp, bw4 * 4 * sizeof(pixel),
                           bw4 * 4, bh4 * 4, ii_mask, bw4 * 4);
         }
 
@@ -1104,7 +1104,8 @@ void bytefn(recon_b_inter)(Dav1dTileContext *const t, const enum BlockSize bs,
             int h_off = 0, v_off = 0;
             if (bw4 == 1 && bh4 == ss_ver) {
                 for (int pl = 0; pl < 2; pl++)
-                    mc(t, f->cur.p.data[1 + pl] + uvdstoff, NULL, f->cur.p.stride[1],
+                    mc(t, ((pixel *) f->cur.p.data[1 + pl]) + uvdstoff,
+                       NULL, f->cur.p.stride[1],
                        bw4, bh4, t->bx - 1, t->by - 1, 1 + pl,
                        r[-(f->b4_stride + 1)].mv[0],
                        &f->refp[r[-(f->b4_stride + 1)].ref[0] - 1],
@@ -1117,7 +1118,7 @@ void bytefn(recon_b_inter)(Dav1dTileContext *const t, const enum BlockSize bs,
                 const enum Filter2d left_filter_2d =
                     av1_filter_2d[t->l.filter[1][by4]][t->l.filter[0][by4]];
                 for (int pl = 0; pl < 2; pl++)
-                    mc(t, f->cur.p.data[1 + pl] + uvdstoff + v_off, NULL,
+                    mc(t, ((pixel *) f->cur.p.data[1 + pl]) + uvdstoff + v_off, NULL,
                        f->cur.p.stride[1], bw4, bh4, t->bx - 1,
                        t->by, 1 + pl, r[-1].mv[0], &f->refp[r[-1].ref[0] - 1],
                        f->frame_thread.pass != 2 ? left_filter_2d :
@@ -1128,7 +1129,7 @@ void bytefn(recon_b_inter)(Dav1dTileContext *const t, const enum BlockSize bs,
                 const enum Filter2d top_filter_2d =
                     av1_filter_2d[t->a->filter[1][bx4]][t->a->filter[0][bx4]];
                 for (int pl = 0; pl < 2; pl++)
-                    mc(t, f->cur.p.data[1 + pl] + uvdstoff + h_off, NULL,
+                    mc(t, ((pixel *) f->cur.p.data[1 + pl]) + uvdstoff + h_off, NULL,
                        f->cur.p.stride[1], bw4, bh4, t->bx, t->by - 1,
                        1 + pl, r[-f->b4_stride].mv[0],
                        &f->refp[r[-f->b4_stride].ref[0] - 1],
@@ -1137,7 +1138,7 @@ void bytefn(recon_b_inter)(Dav1dTileContext *const t, const enum BlockSize bs,
                 v_off = 2 * PXSTRIDE(f->cur.p.stride[1]);
             }
             for (int pl = 0; pl < 2; pl++)
-                mc(t, f->cur.p.data[1 + pl] + uvdstoff + h_off + v_off, NULL, f->cur.p.stride[1],
+                mc(t, ((pixel *) f->cur.p.data[1 + pl]) + uvdstoff + h_off + v_off, NULL, f->cur.p.stride[1],
                    bw4, bh4, t->bx, t->by, 1 + pl, b->mv[0], refp, filter_2d);
         } else {
             if (imin(cbw4, cbh4) > 1 &&
@@ -1147,18 +1148,19 @@ void bytefn(recon_b_inter)(Dav1dTileContext *const t, const enum BlockSize bs,
                   t->warpmv.type > WM_TYPE_TRANSLATION)))
             {
                 for (int pl = 0; pl < 2; pl++)
-                    warp_affine(t, f->cur.p.data[1 + pl] + uvdstoff, NULL,
+                    warp_affine(t, ((pixel *) f->cur.p.data[1 + pl]) + uvdstoff, NULL,
                                 f->cur.p.stride[1], b_dim, 1 + pl, refp,
                                 b->motion_mode == MM_WARP ? &t->warpmv :
                                     &f->frame_hdr.gmv[b->ref[0]]);
             } else {
                 for (int pl = 0; pl < 2; pl++) {
-                    mc(t, f->cur.p.data[1 + pl] + uvdstoff, NULL, f->cur.p.stride[1],
+                    mc(t, ((pixel *) f->cur.p.data[1 + pl]) + uvdstoff,
+                       NULL, f->cur.p.stride[1],
                        bw4 << (bw4 == ss_hor), bh4 << (bh4 == ss_ver),
                        t->bx & ~ss_hor, t->by & ~ss_ver,
                        1 + pl, b->mv[0], refp, filter_2d);
                     if (b->motion_mode == MM_OBMC)
-                        obmc(t, f->cur.p.data[1 + pl] + uvdstoff,
+                        obmc(t, ((pixel *) f->cur.p.data[1 + pl]) + uvdstoff,
                              f->cur.p.stride[1], b_dim, 1 + pl, bx4, by4, w4, h4);
                 }
             }
@@ -1291,9 +1293,9 @@ void bytefn(recon_b_inter)(Dav1dTileContext *const t, const enum BlockSize bs,
     if (DEBUG_BLOCK_INFO && DEBUG_B_PIXELS) {
         hex_dump(dst, f->cur.p.stride[0], b_dim[0] * 4, b_dim[1] * 4, "y-pred");
         if (has_chroma) {
-            hex_dump(&f->cur.p.data[1][uvdstoff], f->cur.p.stride[1],
+            hex_dump(&((pixel *) f->cur.p.data[1])[uvdstoff], f->cur.p.stride[1],
                      cbw4 * 4, cbh4 * 4, "u-pred");
-            hex_dump(&f->cur.p.data[2][uvdstoff], f->cur.p.stride[1],
+            hex_dump(&((pixel *) f->cur.p.data[2])[uvdstoff], f->cur.p.stride[1],
                      cbw4 * 4, cbh4 * 4, "v-pred");
         }
     }

@@ -1962,7 +1962,7 @@ static void setup_tile(Dav1dTileState *const ts,
     const int sb_shift = f->sb_shift;
 
     ts->frame_thread.pal_idx = &f->frame_thread.pal_idx[tile_start_off * 2];
-    ts->frame_thread.cf = &f->frame_thread.cf[tile_start_off * 3];
+    ts->frame_thread.cf = &((int32_t *) f->frame_thread.cf)[tile_start_off * 3];
     ts->cdf = *f->in_cdf.cdf;
     ts->last_qidx = f->frame_hdr.quant.yac;
     memset(ts->last_delta_lf, 0, sizeof(ts->last_delta_lf));
@@ -2568,7 +2568,7 @@ int decode_frame(Dav1dFrameContext *const f) {
                 Dav1dTileState *const ts = &f->ts[tile_idx];
                 const int tile_start_off = f->frame_thread.tile_start_off[tile_idx];
                 ts->frame_thread.pal_idx = &f->frame_thread.pal_idx[tile_start_off * 2];
-                ts->frame_thread.cf = &f->frame_thread.cf[tile_start_off * 3];
+                ts->frame_thread.cf = &((int32_t *) f->frame_thread.cf)[tile_start_off * 3];
                 if (f->n_tc > 0)
                     atomic_init(&ts->progress, 0);
             }

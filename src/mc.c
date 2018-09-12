@@ -356,8 +356,8 @@ static void blend_c(pixel *dst, const ptrdiff_t dst_stride,
 #define blend_px(a, b, m) (((a * (64 - m) + b * m) + 32) >> 6)
             dst[x] = blend_px(dst[x], tmp[x], mask[m_stride == 1 ? 0 : x]);
         }
-        dst += dst_stride;
-        tmp += tmp_stride;
+        dst += PXSTRIDE(dst_stride);
+        tmp += PXSTRIDE(tmp_stride);
         mask += m_stride;
     }
 }
@@ -369,17 +369,18 @@ static void w_mask_c(pixel *dst, const ptrdiff_t dst_stride,
 {
     // store mask at 2x2 resolution, i.e. store 2x1 sum for even rows,
     // and then load this intermediate to calculate final value for odd rows
+    const int rnd = 8 << (BITDEPTH - 8);
     do {
         for (int x = 0; x < w; x++) {
-            const int m = imin(38 + ((abs(tmp1[x] - tmp2[x]) + 8) >> 8), 64);
+            const int m = iclip(38 + ((abs(tmp1[x] - tmp2[x]) + rnd) >> BITDEPTH), 0, 64);
             dst[x] = iclip_pixel((tmp1[x] * m +
                                   tmp2[x] * (64 - m) + 512) >> 10);
 
             if (ss_hor) {
                 x++;
 
-                const int n = imin(38 + ((abs(tmp1[x] - tmp2[x]) + 8) >> 8),
-                                   64);
+                const int n = iclip(38 + ((abs(tmp1[x] - tmp2[x]) + rnd) >> BITDEPTH),
+                                    0, 64);
                 dst[x] = iclip_pixel((tmp1[x] * n +
                                       tmp2[x] * (64 - n) + 512) >> 10);
 
