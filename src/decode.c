@@ -2653,13 +2653,15 @@ int submit_frame(Dav1dContext *const c) {
         }
 
     // setup entropy
-    if (f->frame_hdr.refresh_context)
-        cdf_thread_alloc(&f->out_cdf, c->n_fc > 1 ? &f->frame_thread.td : NULL);
     if (f->frame_hdr.primary_ref_frame == PRIMARY_REF_NONE) {
         av1_init_states(&f->in_cdf, f->frame_hdr.quant.yac);
     } else {
         const int pri_ref = f->frame_hdr.refidx[f->frame_hdr.primary_ref_frame];
         cdf_thread_ref(&f->in_cdf, &c->cdf[pri_ref]);
+    }
+    if (f->frame_hdr.refresh_context) {
+        cdf_thread_alloc(&f->out_cdf, c->n_fc > 1 ? &f->frame_thread.td : NULL);
+        memcpy(f->out_cdf.cdf, f->in_cdf.cdf, sizeof(*f->in_cdf.cdf));
     }
 
     // FIXME qsort so tiles are in order (for frame threading)
