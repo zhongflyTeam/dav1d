@@ -2817,6 +2817,7 @@ int submit_frame(Dav1dContext *const c) {
                 f->frame_hdr.loopfilter.mode_ref_deltas;
             c->refs[i].seg_data = f->frame_hdr.segmentation.seg_data;
             memcpy(c->refs[i].gmv, f->frame_hdr.gmv, sizeof(c->refs[i].gmv));
+            c->refs[i].film_grain = f->frame_hdr.film_grain.data;
 
             if (c->refs[i].segmap)
                 dav1d_ref_dec(c->refs[i].segmap);

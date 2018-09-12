@@ -824,9 +824,70 @@ static int parse_frame_hdr(Dav1dContext *const c, GetBits *const gb,
            (gb->ptr - init_ptr) * 8 - gb->bits_left);
 #endif
 
-    if (seqhdr->film_grain_present) {
-        // FIXME: film grain
-        goto error;
+    hdr->film_grain.present = seqhdr->film_grain_present && get_bits(gb, 1);
+    if (hdr->film_grain.present) {
+        hdr->film_grain.seed = get_bits(gb, 16);
+        hdr->film_grain.update = hdr->frame_type != INTER_FRAME || get_bits(gb, 1);
+        if (!hdr->film_grain.update) {
+            const int refidx = get_bits(gb, 3);
+            hdr->film_grain.data = c->refs[refidx].film_grain;
+        } else {
+            Av1FilmGrainData *const fgd = &hdr->film_grain.data;
+
+            fgd->num_y_points = get_bits(gb, 4);
+            if (fgd->num_y_points > 14) goto error;
+            for (int i = 0; i < fgd->num_y_points; i++) {
+                fgd->y_points[i][0] = get_bits(gb, 8);
+                if (i && fgd->y_points[i - 1][0] >= fgd->y_points[i][0])
+                    goto error;
+                fgd->y_points[i][1] = get_bits(gb, 8);
+            }
+
+            fgd->chroma_scaling_from_luma =
+                seqhdr->layout == DAV1D_PIXEL_LAYOUT_I400 || get_bits(gb, 1);
+            if (fgd->chroma_scaling_from_luma) {
+                fgd->num_uv_points[0] = fgd->num_uv_points[1] = 0;
+            } else for (int pl = 0; pl < 2; pl++) {
+                fgd->num_uv_points[pl] = get_bits(gb, 4);
+                if (fgd->num_uv_points[pl] > 10) goto error;
+                for (int i = 0; i < fgd->num_uv_points[pl]; i++) {
+                    fgd->uv_points[pl][i][0] = get_bits(gb, 8);
+                    if (i && fgd->uv_points[pl][i - 1][0] >= fgd->uv_points[pl][i][0])
+                        goto error;
+                    fgd->uv_points[pl][i][1] = get_bits(gb, 8);
+                }
+            }
+
+            if (seqhdr->layout == DAV1D_PIXEL_LAYOUT_I420 &&
+                !!fgd->num_uv_points[0] != !!fgd->num_uv_points[1])
+            {
+                goto error;
+            }
+
+            fgd->scaling_shift = get_bits(gb, 2) + 8;
+            fgd->ar_coeff_lag = get_bits(gb, 2);
+            const int num_y_pos = 2 * fgd->ar_coeff_lag * (fgd->ar_coeff_lag + 1);
+            const int num_uv_pos = num_y_pos + !!fgd->num_y_points;
+            if (fgd->num_y_points)
+                for (int i = 0; i < num_y_pos; i++)
+                    fgd->ar_coeffs_y[i] = get_bits(gb, 8) - 128;
+            for (int pl = 0; pl < 2; pl++)
+                if (fgd->num_uv_points[pl] || fgd->chroma_scaling_from_luma)
+                    for (int i = 0; i < num_uv_pos; i++)
+                        fgd->ar_coeffs_uv[pl][i] = get_bits(gb, 8) - 128;
+            fgd->ar_coeff_shift = get_bits(gb, 2) + 6;
+            fgd->grain_scale_shift = get_bits(gb, 2);
+            for (int pl = 0; pl < 2; pl++)
+                if (fgd->num_uv_points[pl]) {
+                    fgd->uv_mult[pl] = get_bits(gb, 8);
+                    fgd->uv_luma_mult[pl] = get_bits(gb, 8);
+                    fgd->uv_offset[pl] = get_bits(gb, 9);
+                }
+            fgd->overlap_flag = get_bits(gb, 1);
+            fgd->clip_to_restricted_range = get_bits(gb, 1);
+        }
+    } else {
+        memset(&hdr->film_grain.data, 0, sizeof(hdr->film_grain));
     }
 #if DEBUG_FRAME_HDR
     printf("HDR: post-filmgrain: off=%ld\n",

@@ -375,6 +375,25 @@ typedef struct Av1LoopfilterModeRefDeltas {
     int ref_delta[8];
 } Av1LoopfilterModeRefDeltas;
 
+typedef struct Av1FilmGrainData {
+    int num_y_points;
+    uint8_t y_points[14][2];
+    int chroma_scaling_from_luma;
+    int num_uv_points[2];
+    uint8_t uv_points[2][10][2];
+    int scaling_shift;
+    int ar_coeff_lag;
+    int8_t ar_coeffs_y[24];
+    int8_t ar_coeffs_uv[2][25];
+    int ar_coeff_shift;
+    int grain_scale_shift;
+    int uv_mult[2];
+    int uv_luma_mult[2];
+    int uv_offset[2];
+    int overlap_flag;
+    int clip_to_restricted_range;
+} Av1FilmGrainData;
+
 typedef struct Av1FrameHeader {
     int show_existing_frame;
     int existing_frame_idx;
@@ -453,6 +472,10 @@ typedef struct Av1FrameHeader {
     int warp_motion;
     int reduced_txtp_set;
     WarpedMotionParams gmv[7];
+    struct {
+        int present, update, seed;
+        Av1FilmGrainData data;
+    } film_grain;
 } Av1FrameHeader;
 
 #define QINDEX_RANGE 256

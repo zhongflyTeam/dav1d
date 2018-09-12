@@ -10,7 +10,6 @@ Bugs:
    o OBUs without a length field
    o super_res
    o frame_ref_short_signaling
-   o film grain
 - non-uniform tile indexing when writing edges can overflow array boundaries
 - in lossless, only subsampled 4x4 blocks can use cfl, so no need for separate
   prediction block
