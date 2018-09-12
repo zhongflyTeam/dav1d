@@ -275,7 +275,7 @@ static void read_coef_tree(Dav1dTileContext *const t,
 
         if (f->frame_thread.pass) {
             cf = ts->frame_thread.cf;
-            ts->frame_thread.cf += imin(t_dim->w, 8) * imin(t_dim->h, 8) * 4;
+            ts->frame_thread.cf += imin(t_dim->w, 8) * imin(t_dim->h, 8) * 16;
             cbi = &f->frame_thread.cbi[t->by * f->b4_stride + t->bx];
         } else {
             cf = t->cf;
@@ -314,23 +314,35 @@ static void read_coef_tree(Dav1dTileContext *const t,
 void bytefn(read_coef_blocks)(Dav1dTileContext *const t,
                               const enum BlockSize bs, const Av1Block *const b)
 {
-    Dav1dTileState *const ts = t->ts;
     const Dav1dFrameContext *const f = t->f;
-    const int bx4 = t->bx & 31, by4 = t->by & 31;
     const int ss_ver = f->cur.p.p.layout == DAV1D_PIXEL_LAYOUT_I420;
     const int ss_hor = f->cur.p.p.layout != DAV1D_PIXEL_LAYOUT_I444;
+    const int bx4 = t->bx & 31, by4 = t->by & 31;
     const int cbx4 = bx4 >> ss_hor, cby4 = by4 >> ss_ver;
     const uint8_t *const b_dim = av1_block_dimensions[bs];
     const int bw4 = b_dim[0], bh4 = b_dim[1];
-    const int w4 = imin(bw4, f->bw - t->bx), h4 = imin(bh4, f->bh - t->by);
-    const int cw4 = (w4 + ss_hor) >> ss_hor, ch4 = (h4 + ss_ver) >> ss_ver;
+    const int cbw4 = bw4 >> ss_hor, cbh4 = bh4 >> ss_ver;
     const int has_chroma = f->seq_hdr.layout != DAV1D_PIXEL_LAYOUT_I400 &&
                            (bw4 > ss_hor || t->bx & 1) &&
                            (bh4 > ss_ver || t->by & 1);
+
+    if (b->skip == 1) {
+        memset(&t->a->lcoef[bx4], 0x40, bw4);
+        memset(&t->l.lcoef[by4], 0x40, bh4);
+        if (has_chroma) for (int pl = 0; pl < 2; pl++) {
+            memset(&t->a->ccoef[pl][cbx4], 0x40, cbw4);
+            memset(&t->l.ccoef[pl][cby4], 0x40, cbh4);
+        }
+        return;
+    }
+
+    Dav1dTileState *const ts = t->ts;
+    const int w4 = imin(bw4, f->bw - t->bx), h4 = imin(bh4, f->bh - t->by);
+    const int cw4 = (w4 + ss_hor) >> ss_hor, ch4 = (h4 + ss_ver) >> ss_ver;
     assert(f->frame_thread.pass == 1);
     assert(!b->skip);
     const TxfmInfo *const uv_t_dim = &av1_txfm_dimensions[b->uvtx];
-    const TxfmInfo *const t_dim = &av1_txfm_dimensions[b->max_ytx];
+    const TxfmInfo *const t_dim = &av1_txfm_dimensions[b->intra ? b->tx : b->max_ytx];
 
     for (int init_y = 0; init_y < h4; init_y += 16) {
         for (int init_x = 0; init_x < w4; init_x += 16) {
@@ -383,6 +395,9 @@ void bytefn(read_coef_blocks)(Dav1dTileContext *const t,
                     {
                         uint8_t cf_ctx = 0x40;
                         enum TxfmType txtp;
+                        if (!b->intra)
+                            txtp = t->txtp_map[(by4 + (y << ss_ver)) * 32 +
+                                                bx4 + (x << ss_hor)];
                         cbi[t->bx].eob[1 + pl] =
                             decode_coefs(t, &t->a->ccoef[pl][cbx4 + x],
                                          &t->l.ccoef[pl][cby4 + y], b->uvtx, bs,
@@ -943,7 +958,7 @@ void bytefn(recon_b_intra)(Dav1dTileContext *const t, const enum BlockSize bs,
                             coef *cf;
                             if (f->frame_thread.pass) {
                                 cf = ts->frame_thread.cf;
-                                cf += uv_t_dim->w * uv_t_dim->h * 16;
+                                ts->frame_thread.cf += uv_t_dim->w * uv_t_dim->h * 16;
                                 const struct CodedBlockInfo *const cbi =
                                     &f->frame_thread.cbi[t->by * f->b4_stride + t->bx];
                                 eob = cbi->eob[pl + 1];

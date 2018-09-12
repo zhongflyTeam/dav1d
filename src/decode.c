@@ -634,30 +634,44 @@ static void decode_b(Dav1dTileContext *const t,
     const Dav1dFrameContext *const f = t->f;
     Av1Block b_mem, *const b = f->frame_thread.pass ?
         &f->frame_thread.b[t->by * f->b4_stride + t->bx] : &b_mem;
-
-    if (f->frame_thread.pass == 2) {
-        if (b->intra) {
-            f->bd_fn.recon_b_intra(t, bs, intra_edge_flags, b);
-        } else {
-            f->bd_fn.recon_b_inter(t, bs, b);
-        }
-        return;
-    }
-
     const uint8_t *const b_dim = av1_block_dimensions[bs];
     const int bx4 = t->bx & 31, by4 = t->by & 31;
     const int ss_ver = f->cur.p.p.layout == DAV1D_PIXEL_LAYOUT_I420;
     const int ss_hor = f->cur.p.p.layout != DAV1D_PIXEL_LAYOUT_I444;
     const int cbx4 = bx4 >> ss_hor, cby4 = by4 >> ss_ver;
-    const int have_left = t->bx > ts->tiling.col_start;
-    const int have_top = t->by > ts->tiling.row_start;
     const int bw4 = b_dim[0], bh4 = b_dim[1];
     const int cbw4 = (bw4 + ss_hor) >> ss_hor, cbh4 = (bh4 + ss_ver) >> ss_ver;
-    const int w4 = imin(bw4, f->bw - t->bx), h4 = imin(bh4, f->bh - t->by);
-    const int cw4 = (w4 + ss_hor) >> ss_hor, ch4 = (h4 + ss_ver) >> ss_ver;
     const int has_chroma = f->seq_hdr.layout != DAV1D_PIXEL_LAYOUT_I400 &&
                            (bw4 > ss_hor || t->bx & 1) &&
                            (bh4 > ss_ver || t->by & 1);
+
+    if (f->frame_thread.pass == 2) {
+        if (b->intra) {
+            f->bd_fn.recon_b_intra(t, bs, intra_edge_flags, b);
+
+            if (has_chroma) {
+                memset(&t->l.uvmode[cby4], DC_PRED, cbh4);
+                memset(&t->a->uvmode[cbx4], DC_PRED, cbw4);
+            }
+            memset(&t->l.mode[by4], b->inter_mode, bh4);
+            memset(&t->a->mode[bx4], b->inter_mode, bw4);
+        } else {
+            f->bd_fn.recon_b_inter(t, bs, b);
+
+            if (has_chroma) {
+                memset(&t->l.uvmode[cby4], DC_PRED, cbh4);
+                memset(&t->a->uvmode[cbx4], DC_PRED, cbw4);
+            }
+        }
+        memset(&t->l.intra[by4], b->intra, bh4);
+        memset(&t->a->intra[bx4], b->intra, bw4);
+        return;
+    }
+
+    const int have_left = t->bx > ts->tiling.col_start;
+    const int have_top = t->by > ts->tiling.row_start;
+    const int w4 = imin(bw4, f->bw - t->bx), h4 = imin(bh4, f->bh - t->by);
+    const int cw4 = (w4 + ss_hor) >> ss_hor, ch4 = (h4 + ss_ver) >> ss_ver;
 
     b->bl = bl;
     b->bp = bp;
@@ -1989,21 +2003,24 @@ int decode_tile_sbrow(Dav1dTileContext *const t) {
     Dav1dTileState *const ts = t->ts;
     const Dav1dContext *const c = f->c;
     const int sb_step = f->sb_step;
+    const int tile_row = ts->tiling.row, tile_col = ts->tiling.col;
+    const int col_sb_start = f->frame_hdr.tiling.col_start_sb[tile_col];
+    const int col_sb128_start = col_sb_start >> !f->seq_hdr.sb128;
 
     if (f->frame_thread.pass == 2) {
-        for (t->bx = ts->tiling.col_start;
+        for (t->bx = ts->tiling.col_start,
+             t->a = f->a + col_sb128_start + tile_row * f->sb128w;
              t->bx < ts->tiling.col_end; t->bx += sb_step)
         {
             if (decode_sb(t, root_bl, c->intra_edge.root[root_bl]))
                 return 1;
+            if (t->bx & 16 || f->seq_hdr.sb128)
+                t->a++;
         }
         f->bd_fn.backup_ipred_edge(t);
         return 0;
     }
 
-    const int tile_row = ts->tiling.row, tile_col = ts->tiling.col;
-    const int col_sb_start = f->frame_hdr.tiling.col_start_sb[tile_col];
-    const int col_sb128_start = col_sb_start >> !f->seq_hdr.sb128;
     const int ss_ver = f->cur.p.p.layout == DAV1D_PIXEL_LAYOUT_I420;
     const int ss_hor = f->cur.p.p.layout != DAV1D_PIXEL_LAYOUT_I444;
 
@@ -2294,6 +2311,8 @@ int decode_frame(Dav1dFrameContext *const f) {
             {
                 return -ENOMEM;
             }
+            memset(f->frame_thread.cf, 0,
+                   sizeof(int32_t) * 3 * f->sb128w * f->sb128h * 128 * 128);
         }
         f->lf.mask_sz = f->sb128w * f->sb128h;
     }
@@ -2539,6 +2558,20 @@ int decode_frame(Dav1dFrameContext *const f) {
                                     &f->ts[f->frame_hdr.tiling.update].cdf);
             cdf_thread_signal(&f->out_cdf);
             cdf_thread_unref(&f->out_cdf);
+        }
+        if (f->frame_thread.pass == 1) {
+            assert(c->n_fc > 1);
+            for (int tile_idx = 0;
+                 tile_idx < f->frame_hdr.tiling.rows * f->frame_hdr.tiling.cols;
+                 tile_idx++)
+            {
+                Dav1dTileState *const ts = &f->ts[tile_idx];
+                const int tile_start_off = f->frame_thread.tile_start_off[tile_idx];
+                ts->frame_thread.pal_idx = &f->frame_thread.pal_idx[tile_start_off * 2];
+                ts->frame_thread.cf = &f->frame_thread.cf[tile_start_off * 3];
+                if (f->n_tc > 0)
+                    atomic_init(&ts->progress, 0);
+            }
         }
     }
 
