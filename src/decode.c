@@ -1349,7 +1349,8 @@ static void decode_b(Dav1dTileContext *const t,
             if (!is_segwedge) {
                 if (f->seq_hdr.jnt_comp) {
                     const int jnt_ctx =
-                        get_jnt_comp_ctx(f->cur.p.poc, f->refp[b->ref[0]].p.poc,
+                        get_jnt_comp_ctx(f->seq_hdr.order_hint_n_bits,
+                                         f->cur.p.poc, f->refp[b->ref[0]].p.poc,
                                          f->refp[b->ref[1]].p.poc, t->a, &t->l,
                                          by4, bx4);
                     b->comp_type = COMP_INTER_WEIGHTED_AVG +
@@ -2372,33 +2373,37 @@ int decode_frame(Dav1dFrameContext *const f) {
                 f->qm[i][tx][pl] = av1_qm_tbl[15][!!pl][tx];
 
     // setup jnt_comp weights
-    if (f->frame_hdr.switchable_comp_refs) for (int i = 0; i < 7; i++) {
-        const unsigned ref0poc = f->refp[i].p.poc;
+    if (f->frame_hdr.switchable_comp_refs) {
+        for (int i = 0; i < 7; i++) {
+            const unsigned ref0poc = f->refp[i].p.poc;
 
-        for (int j = i + 1; j < 7; j++) {
-            const unsigned ref1poc = f->refp[j].p.poc;
+            for (int j = i + 1; j < 7; j++) {
+                const unsigned ref1poc = f->refp[j].p.poc;
 
-            const unsigned d1 = imin(abs((int) ref0poc - (int) f->cur.p.poc), 31);
-            const unsigned d0 = imin(abs((int) ref1poc - (int) f->cur.p.poc), 31);
-            const int order = d0 <= d1;
+                const unsigned d1 = imin(abs(get_poc_diff(f->seq_hdr.order_hint_n_bits,
+                                                          ref0poc, f->cur.p.poc)), 31);
+                const unsigned d0 = imin(abs(get_poc_diff(f->seq_hdr.order_hint_n_bits,
+                                                          ref1poc, f->cur.p.poc)), 31);
+                const int order = d0 <= d1;
 
-            static const uint8_t quant_dist_weight[3][2] = {
-                { 2, 3 }, { 2, 5 }, { 2, 7 }
-            };
-            static const uint8_t quant_dist_lookup_table[4][2] = {
-                { 9, 7 }, { 11, 5 }, { 12, 4 }, { 13, 3 }
-            };
+                static const uint8_t quant_dist_weight[3][2] = {
+                    { 2, 3 }, { 2, 5 }, { 2, 7 }
+                };
+                static const uint8_t quant_dist_lookup_table[4][2] = {
+                    { 9, 7 }, { 11, 5 }, { 12, 4 }, { 13, 3 }
+                };
 
-            int k;
-            for (k = 0; k < 3; k++) {
-                int c0 = quant_dist_weight[k][order];
-                int c1 = quant_dist_weight[k][!order];
-                int d0_c0 = d0 * c0;
-                int d1_c1 = d1 * c1;
-                if ((d0 > d1 && d0_c0 < d1_c1) || (d0 <= d1 && d0_c0 > d1_c1)) break;
+                int k;
+                for (k = 0; k < 3; k++) {
+                    int c0 = quant_dist_weight[k][order];
+                    int c1 = quant_dist_weight[k][!order];
+                    int d0_c0 = d0 * c0;
+                    int d1_c1 = d1 * c1;
+                    if ((d0 > d1 && d0_c0 < d1_c1) || (d0 <= d1 && d0_c0 > d1_c1)) break;
+                }
+
+                f->jnt_weights[i][j] = quant_dist_lookup_table[k][order];
             }
-
-            f->jnt_weights[i][j] = quant_dist_lookup_table[k][order];
         }
     }
 

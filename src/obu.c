@@ -717,25 +717,33 @@ static int parse_frame_hdr(Dav1dContext *const c, GetBits *const gb,
     hdr->skip_mode_allowed = 0;
     if (hdr->switchable_comp_refs && hdr->frame_type & 1) {
         const unsigned poc = hdr->frame_offset;
-        unsigned off_before[2] = { 0xFFFFFFFF, 0xFFFFFFFF }, off_after = 0;
+        unsigned off_before[2] = { 0xFFFFFFFF, 0xFFFFFFFF };
+        int off_after = -1;
         int off_before_idx[2], off_after_idx;
         for (int i = 0; i < 7; i++) {
             const unsigned refpoc = c->refs[hdr->refidx[i]].p.p.poc;
 
-            if (refpoc > poc) {
-                if (off_after == 0 || off_after > refpoc) {
+            const int diff = get_poc_diff(seqhdr->order_hint_n_bits, refpoc, poc);
+            if (diff > 0) {
+                if (off_after == -1 || get_poc_diff(seqhdr->order_hint_n_bits,
+                                                    off_after, refpoc) > 0)
+                {
                     off_after = refpoc;
                     off_after_idx = i;
                 }
-            } else if (refpoc < poc) {
-                if (off_before[0] == 0xFFFFFFFFU || refpoc > off_before[0]) {
+            } else if (diff < 0) {
+                if (off_before[0] == 0xFFFFFFFFU ||
+                    get_poc_diff(seqhdr->order_hint_n_bits,
+                                 refpoc, off_before[0]) > 0)
+                {
                     off_before[1] = off_before[0];
                     off_before[0] = refpoc;
                     off_before_idx[1] = off_before_idx[0];
                     off_before_idx[0] = i;
                 } else if (refpoc != off_before[0] &&
                            (off_before[1] == 0xFFFFFFFFU ||
-                            refpoc > off_before[1]))
+                            get_poc_diff(seqhdr->order_hint_n_bits,
+                                         refpoc, off_before[1]) > 0))
                 {
                     off_before[1] = refpoc;
                     off_before_idx[1] = i;
@@ -743,7 +751,7 @@ static int parse_frame_hdr(Dav1dContext *const c, GetBits *const gb,
             }
         }
 
-        if (off_before[0] != 0xFFFFFFFFU && off_after != 0) {
+        if (off_before[0] != 0xFFFFFFFFU && off_after != -1) {
             hdr->skip_mode_refs[0] = off_before_idx[0];
             hdr->skip_mode_refs[1] = off_after_idx;
             hdr->skip_mode_allowed = 1;
