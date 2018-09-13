@@ -78,7 +78,7 @@ static unsigned get_bits_subexp_u(GetBits *const c, const unsigned ref,
         const int b = i ? 3 + i - 1 : 3;
 
         if (n < v + 3 * (1 << b)) {
-            v += get_uniform(c, n - v);
+            v += get_uniform(c, n - v + 1);
             break;
         }
 
