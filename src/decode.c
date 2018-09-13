@@ -2328,7 +2328,7 @@ int decode_frame(Dav1dFrameContext *const f) {
         freep(&f->ipred_edge[0]);
         uint16_t *ptr = f->ipred_edge[0] =
             dav1d_alloc_aligned(f->sb128w * 128 * f->sbh * 3 * sizeof(uint16_t), 32);
-        if (!f->ipred_edge[0]) goto error;
+        if (!f->ipred_edge[0]) return -ENOMEM;;
         f->ipred_edge_sz = f->sbh * f->sb128w * 128;
         f->ipred_edge[1] = &ptr[f->ipred_edge_sz];
         f->ipred_edge[2] = &ptr[f->ipred_edge_sz * 2];
