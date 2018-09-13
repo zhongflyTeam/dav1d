@@ -2499,6 +2499,7 @@ static int motion_field_projection(AV1_COMMON *cm, MV_REFERENCE_FRAME ref_frame,
                                    const int from_y4, const int to_y4) {
   TPL_MV_REF *tpl_mvs_base = cm->tpl_mvs;
   int ref_offset[TOTAL_REFS_PER_FRAME] = { 0 };
+  int ref_sign[TOTAL_REFS_PER_FRAME] = { 0 };
 
   (void)dir;
 
@@ -2521,6 +2522,9 @@ static int motion_field_projection(AV1_COMMON *cm, MV_REFERENCE_FRAME ref_frame,
   for (MV_REFERENCE_FRAME rf = LAST_FRAME; rf <= INTER_REFS_PER_FRAME; ++rf) {
     ref_offset[rf] =
         get_relative_dist(cm, ref_frame_index, ref_rf_idx[rf - LAST_FRAME]);
+    // note the inverted sign
+    ref_sign[rf] =
+        get_relative_dist(cm, ref_rf_idx[rf - LAST_FRAME], ref_frame_index) < 0;
   }
 
   if (dir == 2) ref_to_cur = -ref_to_cur;
@@ -2542,12 +2546,12 @@ static int motion_field_projection(AV1_COMMON *cm, MV_REFERENCE_FRAME ref_frame,
                                      (blk_col << 1) + 1];
       int diridx;
       const int ref0 = mv_ref->ref_frame[0], ref1 = mv_ref->ref_frame[1];
-      if (ref1 > 0 && ref_offset[ref1] > 0 &&
+      if (ref1 > 0 && ref_sign[ref1] &&
           abs(mv_ref->mv[1].as_mv.row) < (1 << 12) &&
           abs(mv_ref->mv[1].as_mv.col) < (1 << 12))
       {
         diridx = 1;
-      } else if (ref0 > 0 && ref_offset[ref0] > 0 &&
+      } else if (ref0 > 0 && ref_sign[ref0] &&
                  abs(mv_ref->mv[0].as_mv.row) < (1 << 12) &&
                  abs(mv_ref->mv[0].as_mv.col) < (1 << 12))
       {
