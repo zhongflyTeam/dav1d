@@ -40,7 +40,7 @@ static void padding(pixel *dst, const ptrdiff_t dst_stride,
         pixel_copy(dst_l + 2 * PXSTRIDE(dst_stride), p, unit_w);
     }
 
-    pixel *dst_tl = dst_l + 3 * dst_stride;
+    pixel *dst_tl = dst_l + 3 * PXSTRIDE(dst_stride);
     if (edges & LR_HAVE_BOTTOM) {
         // Copy next loop filtered rows
         const pixel *const below_1 = lpf + 6 * PXSTRIDE(lpf_stride);

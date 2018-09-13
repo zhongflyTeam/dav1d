@@ -143,10 +143,10 @@ static void lr_stripe(const Dav1dFrameContext *const f, pixel *p, int x, int y,
         y += stripe_h;
         edges |= LR_HAVE_TOP;
         if (y + stripe_h > row_h && sbrow_has_bottom) break;
-        p += stripe_h * p_stride;
+        p += stripe_h * PXSTRIDE(p_stride);
         stripe_h = imin(next_stripe_h, row_h - y);
         if (stripe_h == 0) break;
-        lpf += 4 * lpf_stride;
+        lpf += 4 * PXSTRIDE(lpf_stride);
     }
 }
 
