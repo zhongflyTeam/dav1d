@@ -154,6 +154,16 @@ if (objcopy.found() and
         )
 endif
 
+dav1d_fuzzer_decrypt = executable('dav1d_fuzzer_decrypt',
+    dav1d_fuzzer_sources,
+    include_directories: dav1d_inc_dirs,
+    c_args: [stackalign_flag, stackrealign_flag, '-DDAV1D_DECRYPT'],
+    link_args: fuzzer_ldflags,
+    link_with : libdav1d,
+    build_by_default: true,
+    dependencies : [thread_dependency],
+    )
+
 # Include dav1d test data repository with additional tests
 if get_option('testdata_tests')
     subdir('dav1d-test-data')

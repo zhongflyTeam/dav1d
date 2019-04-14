@@ -129,8 +129,10 @@ int input_open(DemuxerContext **const c_out,
     return 0;
 }
 
-int input_read(DemuxerContext *const ctx, Dav1dData *const data) {
-    return ctx->impl->read(ctx->data, data);
+int input_read(DemuxerContext *const ctx, Encryptor encryptor,
+               Dav1dData *const data)
+{
+    return ctx->impl->read(ctx->data, encryptor, data);
 }
 
 void input_close(DemuxerContext *const ctx) {

@@ -34,7 +34,7 @@
 #include "src/getbits.h"
 
 void dav1d_init_get_bits(GetBits *const c, const uint8_t *const data,
-                         const size_t sz)
+                         const size_t sz, Dav1dDecryptor decrytor)
 {
     c->ptr = c->ptr_start = data;
     c->ptr_end = &c->ptr_start[sz];
@@ -42,6 +42,7 @@ void dav1d_init_get_bits(GetBits *const c, const uint8_t *const data,
     c->state = 0;
     c->error = 0;
     c->eof = 0;
+    c->decryptor = decrytor;
 }
 
 static void refill(GetBits *const c, const unsigned n) {
@@ -50,8 +51,13 @@ static void refill(GetBits *const c, const unsigned n) {
     do {
         state <<= 8;
         c->bits_left += 8;
-        if (!c->eof)
-            state |= *c->ptr++;
+        if (!c->eof) {
+            uint8_t x = *c->ptr;
+            if (c->decryptor.callback)
+                c->decryptor.callback(c->decryptor.cookie, c->ptr, &x, 1);
+            state |= x;
+            c->ptr++;
+        }
         if (c->ptr >= c->ptr_end) {
             c->error = c->eof;
             c->eof = 1;

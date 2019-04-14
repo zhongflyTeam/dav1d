@@ -90,7 +90,9 @@ static int ivf_open(IvfInputContext *const c, const char *const file,
     return 0;
 }
 
-static int ivf_read(IvfInputContext *const c, Dav1dData *const buf) {
+static int ivf_read(IvfInputContext *const c, Encryptor encryptor,
+                    Dav1dData *const buf)
+{
     uint8_t data[8];
     uint8_t *ptr;
     size_t res;
@@ -109,6 +111,13 @@ static int ivf_read(IvfInputContext *const c, Dav1dData *const buf) {
         fprintf(stderr, "Failed to read frame data: %s\n", strerror(errno));
         dav1d_data_unref(buf);
         return -1;
+    }
+
+    if (encryptor) {
+        uint8_t *const ptr_copy = malloc(sz);
+        memcpy(ptr_copy, ptr, sz);
+        encryptor(ptr_copy, ptr, sz);
+        free(ptr_copy);
     }
 
     return 0;

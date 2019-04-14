@@ -2304,7 +2304,8 @@ static void setup_tile(Dav1dTileState *const ts,
     ts->last_qidx = f->frame_hdr->quant.yac;
     memset(ts->last_delta_lf, 0, sizeof(ts->last_delta_lf));
 
-    dav1d_msac_init(&ts->msac, data, sz, f->frame_hdr->disable_cdf_update);
+    dav1d_msac_init(&ts->msac, data, sz, f->c->in.decryptor,
+                    f->frame_hdr->disable_cdf_update);
 
     ts->tiling.row = tile_row;
     ts->tiling.col = tile_col;
@@ -2847,6 +2848,7 @@ int dav1d_decode_frame(Dav1dFrameContext *const f) {
     for (int i = 0; i < f->n_tile_data; i++) {
         const uint8_t *data = f->tile[i].data.data;
         size_t size = f->tile[i].data.sz;
+        Dav1dDecryptor decryptor = f->tile[i].data.decryptor;
 
         for (int j = f->tile[i].start; j <= f->tile[i].end; j++) {
             size_t tile_sz;
@@ -2855,8 +2857,13 @@ int dav1d_decode_frame(Dav1dFrameContext *const f) {
             } else {
                 if (f->frame_hdr->tiling.n_bytes > size) goto error;
                 tile_sz = 0;
-                for (unsigned k = 0; k < f->frame_hdr->tiling.n_bytes; k++)
-                    tile_sz |= (unsigned)*data++ << (k * 8);
+                for (unsigned k = 0; k < f->frame_hdr->tiling.n_bytes; k++) {
+                    uint8_t x = *data;
+                    if (decryptor.callback)
+                       decryptor.callback(decryptor.cookie, data, &x, 1);
+                    tile_sz |= (unsigned)x << (k * 8);
+                    ++data;
+                }
                 tile_sz++;
                 size -= f->frame_hdr->tiling.n_bytes;
                 if (tile_sz > size) goto error;

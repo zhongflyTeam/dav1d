@@ -33,10 +33,25 @@
 
 #include "common.h"
 
+typedef struct Dav1dDecryptor {
+    void *cookie; ///< Custom data to pass to the decryptor.
+    /**
+     * Decryptor callback. Default NULL to disable decryption.
+     *
+     * @param cookie Custom pointer passed to the callback.
+     * @param  input Encrypted data.
+     * @param output Decrypted data, using the decryption callback.
+     * @param     sz Number of bytes to decrypt.
+     */
+    void (*callback)(void *cookie, const uint8_t *input,
+                     uint8_t *const output, size_t sz);
+} Dav1dDecryptor;
+
 typedef struct Dav1dData {
     const uint8_t *data; ///< data pointer
     size_t sz; ///< data size
     struct Dav1dRef *ref; ///< allocation origin
+    Dav1dDecryptor decryptor; ///< decryptor
     Dav1dDataProps m; ///< user provided metadata passed to the output picture
 } Dav1dData;
 

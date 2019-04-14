@@ -31,6 +31,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include "dav1d/data.h"
+
 /* Using uint32_t should be faster on 32 bit systems, in theory, maybe */
 typedef uint64_t ec_win;
 
@@ -41,10 +43,11 @@ typedef struct MsacContext {
     uint16_t rng;
     int cnt;
     int allow_update_cdf;
+    Dav1dDecryptor decryptor;
 } MsacContext;
 
 void dav1d_msac_init(MsacContext *c, const uint8_t *data, size_t sz,
-                     int disable_cdf_update_flag);
+                     Dav1dDecryptor decryptor, int disable_cdf_update_flag);
 unsigned dav1d_msac_decode_symbol_adapt(MsacContext *s, uint16_t *cdf,
                                         const unsigned n_symbols);
 unsigned dav1d_msac_decode_bool_equi(MsacContext *const s);

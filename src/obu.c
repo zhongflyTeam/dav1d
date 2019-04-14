@@ -1172,7 +1172,7 @@ int dav1d_parse_obus(Dav1dContext *const c, Dav1dData *const in, int global) {
     GetBits gb;
     int res;
 
-    dav1d_init_get_bits(&gb, in->data, in->sz);
+    dav1d_init_get_bits(&gb, in->data, in->sz, in->decryptor);
 
     // obu header
     dav1d_get_bits(&gb, 1); // obu_forbidden_bit

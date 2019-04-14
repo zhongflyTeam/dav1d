@@ -31,14 +31,18 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "dav1d/data.h"
+
 typedef struct GetBits {
     int error, eof;
     uint64_t state;
     unsigned bits_left;
     const uint8_t *ptr, *ptr_start, *ptr_end;
+    Dav1dDecryptor decryptor;
 } GetBits;
 
-void dav1d_init_get_bits(GetBits *c, const uint8_t *data, size_t sz);
+void dav1d_init_get_bits(GetBits *c, const uint8_t *data, size_t sz,
+                         Dav1dDecryptor decrytor);
 unsigned dav1d_get_bits(GetBits *c, unsigned n);
 int dav1d_get_sbits(GetBits *c, unsigned n);
 unsigned dav1d_get_uleb128(GetBits *c);

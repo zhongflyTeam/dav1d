@@ -47,6 +47,8 @@ uint8_t *dav1d_data_create_internal(Dav1dData *const buf, const size_t sz) {
     if (!buf->ref) return NULL;
     buf->data = buf->ref->const_data;
     buf->sz = buf->m.size = sz;
+    buf->decryptor.cookie = NULL;
+    buf->decryptor.callback = NULL;
     dav1d_data_props_set_defaults(&buf->m);
 
     return buf->ref->data;

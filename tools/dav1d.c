@@ -48,6 +48,23 @@
 
 #include "dav1d_cli_parse.h"
 
+#ifdef DAV1D_DECRYPT
+static void xor_encrypt(const uint8_t *const input, uint8_t *const output,
+                        size_t size)
+{
+    for (size_t i = 0; i < size; ++i)
+        output[i] = input[i] ^ i;
+}
+
+static void xor_decrypt(void *cookie, const uint8_t *input,
+                    uint8_t *const output, size_t count)
+{
+    size_t offset = (intptr_t)input - (intptr_t)cookie;
+    for (size_t i = 0; i < count; ++i)
+        output[i] = input[i] ^ (offset + i);
+}
+#endif
+
 static void print_stats(const int istty, const unsigned n,
                         const unsigned num)
 {
@@ -74,6 +91,11 @@ int main(const int argc, char *const *const argv) {
     Dav1dData data;
     unsigned n_out = 0, total, fps[2];
     const char *version = dav1d_version();
+#ifdef DAV1D_DECRYPT
+    Encryptor encryptor = xor_encrypt;
+#else
+    Encryptor encryptor = NULL;
+#endif
 
     if (strcmp(version, DAV1D_VERSION)) {
         fprintf(stderr, "Version mismatch (library: %s, executable: %s)\n",
@@ -92,7 +114,7 @@ int main(const int argc, char *const *const argv) {
         return res;
     }
     for (unsigned i = 0; i <= cli_settings.skip; i++) {
-        if ((res = input_read(in, &data)) < 0) {
+        if ((res = input_read(in, encryptor, &data)) < 0) {
             input_close(in);
             return res;
         }
@@ -107,7 +129,7 @@ int main(const int argc, char *const *const argv) {
         Dav1dSequenceHeader seq;
         unsigned seq_skip = 0;
         while (dav1d_parse_sequence_header(&seq, data.data, data.sz)) {
-            if ((res = input_read(in, &data)) < 0) {
+            if ((res = input_read(in, encryptor, &data)) < 0) {
                 input_close(in);
                 return res;
             }
@@ -127,6 +149,10 @@ int main(const int argc, char *const *const argv) {
         return res;
 
     do {
+#ifdef DAV1D_DECRYPT
+        data.decryptor.cookie = (void*)data.data;
+        data.decryptor.callback = xor_decrypt;
+#endif
         memset(&p, 0, sizeof(p));
         if ((res = dav1d_send_data(c, &data)) < 0) {
             if (res != -EAGAIN) {
@@ -161,7 +187,7 @@ int main(const int argc, char *const *const argv) {
 
         if (cli_settings.limit && n_out == cli_settings.limit)
             break;
-    } while (data.sz > 0 || !input_read(in, &data));
+    } while (data.sz > 0 || !input_read(in, encryptor, &data));
 
     if (data.sz > 0) dav1d_data_unref(&data);
 

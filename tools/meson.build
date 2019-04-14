@@ -54,3 +54,14 @@ dav1d = executable('dav1d',
     dependencies : [getopt_dependency, thread_dependency],
     install : true,
 )
+
+dav1d_decrypt = executable('dav1d_decrypt',
+    dav1d_sources,
+    rev_target,
+
+    link_with : libdav1d,
+    include_directories : [dav1d_inc_dirs],
+    c_args: ['-DDAV1D_DECRYPT'],
+    dependencies : [getopt_dependency, thread_dependency],
+    install : true,
+)

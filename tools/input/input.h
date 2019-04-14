@@ -32,11 +32,13 @@
 
 typedef struct DemuxerContext DemuxerContext;
 
+typedef void (*Encryptor)(const uint8_t *, uint8_t *const, size_t);
+
 void init_demuxers(void);
 int input_open(DemuxerContext **const c_out,
                const char *const name, const char *const filename,
                unsigned fps[2], unsigned *num_frames);
-int input_read(DemuxerContext *ctx, Dav1dData *data);
+int input_read(DemuxerContext *ctx, Encryptor encryptor, Dav1dData *data);
 void input_close(DemuxerContext *ctx);
 
 #endif /* DAV1D_INPUT_INPUT_H */

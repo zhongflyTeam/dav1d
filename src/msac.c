@@ -31,7 +31,7 @@
 #include <limits.h>
 
 #include "common/intops.h"
-
+#include "dav1d/data.h"
 #include "src/msac.h"
 
 #define EC_PROB_SHIFT 6
@@ -45,7 +45,11 @@ static inline void ctx_refill(MsacContext *s) {
     int c = EC_WIN_SIZE - s->cnt - 24;
     ec_win dif = s->dif;
     while (c >= 0 && buf_pos < buf_end) {
-        dif ^= ((ec_win)*buf_pos++) << c;
+        uint8_t x = *buf_pos;
+        if (s->decryptor.callback)
+          s->decryptor.callback(s->decryptor.cookie, buf_pos, &x, 1);
+        buf_pos++;
+        dif ^= ((ec_win)x) << c;
         c -= 8;
     }
     s->dif = dif;
@@ -201,7 +205,8 @@ unsigned dav1d_msac_decode_bool_adapt(MsacContext *const c,
 }
 
 void dav1d_msac_init(MsacContext *const s, const uint8_t *const data,
-                     const size_t sz, const int disable_cdf_update_flag)
+                     const size_t sz, Dav1dDecryptor decryptor,
+                     const int disable_cdf_update_flag)
 {
     s->buf_pos = data;
     s->buf_end = data + sz;
@@ -209,5 +214,6 @@ void dav1d_msac_init(MsacContext *const s, const uint8_t *const data,
     s->rng = 0x8000;
     s->cnt = -15;
     s->allow_update_cdf = !disable_cdf_update_flag;
+    s->decryptor = decryptor;
     ctx_refill(s);
 }

@@ -84,7 +84,9 @@ static int annexb_open(AnnexbInputContext *const c, const char *const file,
     return 0;
 }
 
-static int annexb_read(AnnexbInputContext *const c, Dav1dData *const data) {
+static int annexb_read(AnnexbInputContext *const c, Encryptor encryptor,
+                       Dav1dData *const data)
+{
     size_t len;
     int res;
 
@@ -107,6 +109,13 @@ static int annexb_read(AnnexbInputContext *const c, Dav1dData *const data) {
         fprintf(stderr, "Failed to read frame data: %s\n", strerror(errno));
         dav1d_data_unref(data);
         return -1;
+    }
+
+    if (encryptor) {
+        uint8_t *const ptr_copy = malloc(len);
+        memcpy(ptr_copy, ptr, len);
+        encryptor(ptr_copy, ptr, len);
+        free(ptr_copy);
     }
 
     return 0;

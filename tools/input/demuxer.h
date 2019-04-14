@@ -29,6 +29,7 @@
 #define DAV1D_INPUT_DEMUXER_H
 
 #include "data.h"
+#include "input.h"
 
 typedef struct DemuxerPriv DemuxerPriv;
 typedef struct Demuxer {
@@ -37,7 +38,7 @@ typedef struct Demuxer {
     const char *extension;
     int (*open)(DemuxerPriv *ctx, const char *filename,
                 unsigned fps[2], unsigned *num_frames);
-    int (*read)(DemuxerPriv *ctx, Dav1dData *data);
+    int (*read)(DemuxerPriv *ctx, Encryptor encryptor, Dav1dData *data);
     void (*close)(DemuxerPriv *ctx);
 } Demuxer;
 
