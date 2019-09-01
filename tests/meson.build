@@ -103,6 +103,11 @@ if get_option('fuzzer_ldflags') != ''
     fuzzer_ldflags += [get_option('fuzzer_ldflags')]
 endif
 
+# Configuratin data for fuzz_config.h
+fuzz_cdata = configuration_data()
+
+fuzz_max_time = 0
+
 if fuzzing_engine == 'none'
     dav1d_fuzzer_sources += files('libfuzzer/main.c')
 elif fuzzing_engine == 'libfuzzer'
@@ -110,10 +115,21 @@ elif fuzzing_engine == 'libfuzzer'
 elif fuzzing_engine == 'oss-fuzz'
     # libFuzzingEngine needs libc++
     fuzzer_ldflags += ['-lc++']
+    fuzz_max_time = 22
 endif
 
+fuzz_cdata.set('DAV1D_FUZZ_MAX_TIME', fuzz_max_time)
+
+if host_machine.system() != 'windows' and fuzz_max_time > 0
+    if cc.has_function('clock_gettime', prefix : '#include <time.h>', args : test_args)
+        fuzz_cdata.set('HAVE_CLOCK_GETTIME', 1)
+    endif
+endif
+
+fuzz_config_h_target = configure_file(output: 'fuzz_config.h', configuration: fuzz_cdata)
+
 dav1d_fuzzer = executable('dav1d_fuzzer',
-    dav1d_fuzzer_sources,
+    dav1d_fuzzer_sources, fuzz_config_h_target,
     include_directories: dav1d_inc_dirs,
     c_args: [stackalign_flag, stackrealign_flag],
     link_args: fuzzer_ldflags,
@@ -123,7 +139,7 @@ dav1d_fuzzer = executable('dav1d_fuzzer',
     )
 
 dav1d_fuzzer_mt = executable('dav1d_fuzzer_mt',
-    dav1d_fuzzer_sources,
+    dav1d_fuzzer_sources, fuzz_config_h_target,
     include_directories: dav1d_inc_dirs,
     c_args: [stackalign_flag, stackrealign_flag, '-DDAV1D_MT_FUZZING'],
     link_args: fuzzer_ldflags,
@@ -153,6 +169,7 @@ if (objcopy.found() and
 
     dav1d_fuzzer_mem = executable('dav1d_fuzzer_mem',
         dav1d_fuzzer_sources + ['libfuzzer/alloc_fail.c'],
+        fuzz_config_h_target,
         include_directories: dav1d_inc_dirs,
         c_args: [stackalign_flag, stackrealign_flag, '-DDAV1D_ALLOC_FAIL'],
         link_args: fuzzer_ldflags + [join_paths(libdav1d_af.full_path())],

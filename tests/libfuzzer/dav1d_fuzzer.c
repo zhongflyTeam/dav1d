@@ -26,6 +26,7 @@
  */
 
 #include "config.h"
+#include "fuzz_config.h"
 
 #include <errno.h>
 #include <stddef.h>
@@ -35,6 +36,10 @@
 #include <dav1d/dav1d.h>
 #include "src/cpu.h"
 #include "dav1d_fuzzer.h"
+
+#if DAV1D_FUZZ_MAX_TIME && defined(HAVE_CLOCK_GETTIME)
+#include <time.h>
+#endif
 
 #ifdef DAV1D_ALLOC_FAIL
 
@@ -66,6 +71,13 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     const uint8_t *ptr = data;
     int have_seq_hdr = 0;
     int err;
+
+#if DAV1D_FUZZ_MAX_TIME && defined(HAVE_CLOCK_GETTIME)
+    struct timespec start;
+    if (clock_gettime(CLOCK_MONOTONIC, &start)) {
+        start.tv_sec = start.tv_nsec = 0;
+    }
+#endif
 
     dav1d_version();
 
@@ -109,6 +121,17 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     while (ptr <= data + size - 12) {
         Dav1dData buf;
         uint8_t *p;
+
+#if DAV1D_FUZZ_MAX_TIME && defined(HAVE_CLOCK_GETTIME)
+        // try to avoid timeouts in oss-fuzz
+        struct timespec cur;
+        if (!clock_gettime(CLOCK_MONOTONIC, &cur)) {
+            if (cur.tv_sec - start.tv_sec >= DAV1D_FUZZ_MAX_TIME) {
+                dav1d_flush(ctx);
+                break;
+            }
+        }
+#endif
 
         size_t frame_size = r32le(ptr);
         ptr += 12;
