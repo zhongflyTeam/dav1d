@@ -198,6 +198,17 @@ struct Dav1dContext {
     Dav1dLogger logger;
 
     Dav1dMemPool *picture_pool;
+
+    int hw_decoding;
+    void *hw_cookie;
+    int (*hw_new_sequence_header)(void *cookie, const Dav1dSequenceHeader *seq_hdr);
+    int (*hw_setup_frame)(void *cookie, const Dav1dPicture *img,
+                             const Dav1dSequenceHeader *seq_hdr,
+                             const Dav1dFrameHeader *frame_hdr,
+                             const Dav1dPicture *all_frames[DAV1D_REFS_PER_FRAME]);
+    int (*hw_decode_frame)(void *cookie, const Dav1dPicture *img,
+                           const Dav1dFrameHeader *frame_hdr,
+                           const struct Dav1dTileGroup tiles[], size_t n_tile_data);
 };
 
 struct Dav1dTask {

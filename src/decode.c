@@ -3357,6 +3357,11 @@ int dav1d_decode_frame_main(Dav1dFrameContext *const f) {
 
     assert(f->c->n_tc == 1);
 
+    if (f->c->hw_decoding) {
+        return f->c->hw_decode_frame(f->c->hw_cookie, &f->cur, f->frame_hdr,
+                                     f->tile, f->n_tile_data);
+    }
+
     Dav1dTaskContext *const t = &c->tc[f - c->fc];
     t->f = f;
     t->frame_thread.pass = 0;
@@ -3677,6 +3682,15 @@ int dav1d_submit_frame(Dav1dContext *const c) {
 #undef scale_fac
         f->resize_start[0] = get_upscale_x0(f->cur.p.w, f->sr_cur.p.p.w, f->resize_step[0]);
         f->resize_start[1] = get_upscale_x0(in_cw, out_cw, f->resize_step[1]);
+    }
+
+    if (c->hw_decoding) {
+        const Dav1dPicture *frame_refs[8];
+        for (size_t i = 0; i < 8; i++)
+            frame_refs[i] = &c->refs[i].p.p;
+        res = c->hw_setup_frame(c->hw_cookie, &f->cur, f->seq_hdr,
+                                f->frame_hdr, frame_refs);
+        if (res < 0) goto error;
     }
 
     // move f->cur into output queue
