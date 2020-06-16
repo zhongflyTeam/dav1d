@@ -68,6 +68,19 @@ enum Dav1dInloopFilterType {
                              DAV1D_INLOOPFILTER_RESTORATION,
 };
 
+typedef struct Dav1dTileGroup {
+
+    /**
+    * Bitstream data representing the tiles in this group.
+    */
+    Dav1dData data;
+
+    /**
+    * Start and end tile indexes represented by this tile group.
+    */
+    int start, end;
+} Dav1dTileGroup;
+
 typedef struct Dav1dSettings {
     int n_threads; ///< number of threads (0 = number of logical cores in host system, default 0)
     int max_frame_delay; ///< Set to 1 for low-latency decoding (0 = ceil(sqrt(n_threads)), default 0)

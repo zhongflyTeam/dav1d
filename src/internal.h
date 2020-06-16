@@ -68,11 +68,6 @@ typedef struct Dav1dDSPContext {
     Dav1dLoopRestorationDSPContext lr;
 } Dav1dDSPContext;
 
-struct Dav1dTileGroup {
-    Dav1dData data;
-    int start, end;
-};
-
 enum TaskType {
     DAV1D_TASK_TYPE_INIT,
     DAV1D_TASK_TYPE_INIT_CDF,
