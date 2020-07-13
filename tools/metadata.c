@@ -75,7 +75,7 @@ void output_frame_metadata(CLISettings *const cli_settings, Dav1dPicture *p)
         write_prop_int("height", p->frame_hdr->height, 1, false);
         write_prop_int("width", p->frame_hdr->width, 1, false);
         write_prop_int("frame_offset", p->frame_hdr->frame_offset, 1, false);
-        write_prop_int("width", &p->data[0], 1, false);
+        write_prop_int("width", p->m., 1, false);
     } else{
         puts("none");
     }
