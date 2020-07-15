@@ -41,7 +41,7 @@
 #include "dav1d_cli_parse.h"
 #include "src/cpu.h"
 
-static const char short_opts[] = "mi:o:vql:s:";
+static const char short_opts[] = "i:o:vql:s:";
 
 enum {
     ARG_DEMUXER = 256,
@@ -57,6 +57,7 @@ enum {
     ARG_ALL_LAYERS,
     ARG_SIZE_LIMIT,
     ARG_CPU_MASK,
+    ARG_METADATA,
 };
 
 static const struct option long_opts[] = {
@@ -79,6 +80,7 @@ static const struct option long_opts[] = {
     { "alllayers",      1, NULL, ARG_ALL_LAYERS },
     { "sizelimit",      1, NULL, ARG_SIZE_LIMIT },
     { "cpumask",        1, NULL, ARG_CPU_MASK },
+    { "debug",          1, NULL, ARG_METADATA },
     { NULL,             0, NULL, 0 },
 };
 
@@ -247,10 +249,6 @@ void parse(const int argc, char *const *const argv,
 
     while ((o = getopt_long(argc, argv, short_opts, long_opts, NULL)) != -1) {
         switch (o) {
-        case 'm':
-            cli_settings->metadata = 1;
-            break;
-
         case 'o':
             cli_settings->outputfile = optarg;
             break;
@@ -274,6 +272,16 @@ void parse(const int argc, char *const *const argv,
             break;
         case ARG_FRAME_TIMES:
             cli_settings->frametimes = optarg;
+            break;
+        case ARG_METADATA:
+            //COMMENT2REMOVE
+            //fprintf(stderr, "%s, %d", argv[6], optind);
+            if (!strcmp(argv[optind - 1],"metadata"))
+                cli_settings->metadata = 1;
+            else{
+                fprintf(stderr, "%s\n", "Specified debug mode does not exist");
+                exit(0);
+            }
             break;
         case ARG_REALTIME:
             // workaround to parse an optional argument of the form `--a b`

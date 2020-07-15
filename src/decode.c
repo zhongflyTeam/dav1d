@@ -127,7 +127,7 @@ static void read_mv_residual(Dav1dTileContext *const t, mv *const ref_mv,
         ref_mv->y += read_mv_component_diff(t, &mv_cdf->comp[0], have_fp);
         ref_mv->x += read_mv_component_diff(t, &mv_cdf->comp[1], have_fp);
         //TOM
-        fprintf(stdout, "mv x: %d, mv y: %d, ", ref_mv->x, ref_mv->y);
+        //fprintf(stdout, "mv x: %d, mv y: %d, ", ref_mv->x, ref_mv->y);
         break;
     case MV_JOINT_H:
         ref_mv->x += read_mv_component_diff(t, &mv_cdf->comp[1], have_fp);
@@ -3464,7 +3464,7 @@ int dav1d_submit_frame(Dav1dContext *const c) {
     f->bitdepth_max = (1 << f->cur.p.bpc) - 1;
 
     //TOM
-    fprintf(stdout, "bitdepthmax %d, ", f->bitdepth_max);
+    //fprintf(stdout, "bitdepthmax %d, ", f->bitdepth_max);
 
     // ref_mvs
     if ((f->frame_hdr->frame_type & 1) || f->frame_hdr->allow_intrabc) {
@@ -3507,7 +3507,7 @@ int dav1d_submit_frame(Dav1dContext *const c) {
     }
 
     //TOM
-    fprintf(stdout, "bitdepthmax %d, ", f->bitdepth_max);
+    //fprintf(stdout, "bitdepthmax %d, ", f->bitdepth_max);
 
 
     // segmap
