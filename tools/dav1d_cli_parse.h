@@ -37,6 +37,7 @@ typedef struct {
     const char *muxer;
     const char *frametimes;
     const char *verify;
+    const char *metadatafile;
     unsigned limit, skip;
     int quiet;
     enum {
@@ -46,7 +47,6 @@ typedef struct {
     } realtime;
     double realtime_fps;
     unsigned realtime_cache;
-    unsigned metadata;
 } CLISettings;
 
 void parse(const int argc, char *const *const argv,

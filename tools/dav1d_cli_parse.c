@@ -41,7 +41,7 @@
 #include "dav1d_cli_parse.h"
 #include "src/cpu.h"
 
-static const char short_opts[] = "i:o:vql:s:";
+static const char short_opts[] = "i:o:m:vql:s:";
 
 enum {
     ARG_DEMUXER = 256,
@@ -80,7 +80,7 @@ static const struct option long_opts[] = {
     { "alllayers",      1, NULL, ARG_ALL_LAYERS },
     { "sizelimit",      1, NULL, ARG_SIZE_LIMIT },
     { "cpumask",        1, NULL, ARG_CPU_MASK },
-    { "debug",          1, NULL, ARG_METADATA },
+    { "metadata",       1, NULL, 'm' },
     { NULL,             0, NULL, 0 },
 };
 
@@ -124,7 +124,9 @@ static void usage(const char *const app, const char *const reason, ...) {
             " --alllayers $num:     output all spatial layers of a scalable AV1 bitstream (default: 1)\n"
             " --sizelimit $num:     stop decoding if the frame size exceeds the specified limit\n"
             " --verify $md5:        verify decoded md5. implies --muxer md5, no output\n"
-            " --cpumask $mask:      restrict permitted CPU instruction sets (0" ALLOWED_CPU_MASKS "; default: -1)\n");
+            " --cpumask $mask:      restrict permitted CPU instruction sets (0" ALLOWED_CPU_MASKS "; default: -1)\n"
+            " --metadata/-m $file:  enable metadata extraction to specified file\n"
+            );
     exit(1);
 }
 
@@ -264,6 +266,9 @@ void parse(const int argc, char *const *const argv,
         case 's':
             cli_settings->skip = parse_unsigned(optarg, 's', argv[0]);
             break;
+        case 'm':
+            cli_settings->metadatafile = optarg;
+            break;
         case ARG_DEMUXER:
             cli_settings->demuxer = optarg;
             break;
@@ -272,16 +277,6 @@ void parse(const int argc, char *const *const argv,
             break;
         case ARG_FRAME_TIMES:
             cli_settings->frametimes = optarg;
-            break;
-        case ARG_METADATA:
-            //COMMENT2REMOVE
-            //fprintf(stderr, "%s, %d", argv[6], optind);
-            if (!strcmp(argv[optind - 1],"metadata"))
-                cli_settings->metadata = 1;
-            else{
-                fprintf(stderr, "%s\n", "Specified debug mode does not exist");
-                exit(0);
-            }
             break;
         case ARG_REALTIME:
             // workaround to parse an optional argument of the form `--a b`
