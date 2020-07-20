@@ -47,7 +47,6 @@ typedef struct {
     } realtime;
     double realtime_fps;
     unsigned realtime_cache;
-    unsigned metadata;
 } CLISettings;
 
 void parse(const int argc, char *const *const argv,
