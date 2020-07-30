@@ -57,11 +57,7 @@
 
 #include "dav1d_cli_parse.h"
 
-<<<<<<< HEAD
 #include "metadata.h"
-=======
-//#include "metadata.h"
->>>>>>> 8c34e3c... WIP Adding template for JSON support
 
 static uint64_t get_time_nanos(void) {
 #ifdef _WIN32
@@ -245,24 +241,10 @@ int main(const int argc, char *const *const argv) {
             }
             res = 0;
         } else {
-<<<<<<< HEAD
 
             // metadata extraction point
             output_frame_metadata(&cli_settings, &p);
 
-=======
-            // This is where the frame_type and frame_offset for each frame is outputted.
-            if (cli_settings.metadatafile != NULL){
-                if (p.frame_hdr){
-                printf("FP: %d, %d\n",
-                    p.frame_hdr->frame_type,
-                    p.frame_hdr->frame_offset);
-                    //metadata_begin();
-                } else{
-                puts("none");
-                }
-            }
->>>>>>> 8c34e3c... WIP Adding template for JSON support
             if (!n_out) {
                 if ((res = output_open(&out, cli_settings.muxer,
                                        cli_settings.outputfile,
