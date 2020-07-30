@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 
 #ifndef DAV1D_METADATA_H
 #define DAV1D_METADATA_H
@@ -10,3 +11,15 @@ void create_metadata(CLISettings *const cli_settings);
 
 
 #endif /* DAV1D_METADATA_H */
+=======
+/*
+#ifndef DAV1D_METADATA_H
+#define DAV1D_METADATA_H
+
+//#include "data.h"
+
+void metadata_begin();
+
+
+#endif /* DAV1D_METADATA_H */
+>>>>>>> 8c34e3c... WIP Adding template for JSON support
