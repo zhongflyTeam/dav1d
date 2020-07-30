@@ -126,10 +126,6 @@ static void read_mv_residual(Dav1dTileContext *const t, mv *const ref_mv,
     case MV_JOINT_HV:
         ref_mv->y += read_mv_component_diff(t, &mv_cdf->comp[0], have_fp);
         ref_mv->x += read_mv_component_diff(t, &mv_cdf->comp[1], have_fp);
-        //TOM
-        //if(!strcmp(cli_settings.metadatafile, "")){
-            fprintf(stdout, "mv x: %d, mv y: %d, ", ref_mv->x, ref_mv->y);
-        //}
         break;
     case MV_JOINT_H:
         ref_mv->x += read_mv_component_diff(t, &mv_cdf->comp[1], have_fp);
@@ -3465,11 +3461,6 @@ int dav1d_submit_frame(Dav1dContext *const c) {
     f->b4_stride = (f->bw + 31) & ~31;
     f->bitdepth_max = (1 << f->cur.p.bpc) - 1;
 
-    //TOM
-    //if(!strcmp(cli_settings.metadatafile, "")){
-        fprintf(stdout, "bitdepthmax %d, ", f->bitdepth_max);
-    //}
-
     // ref_mvs
     if ((f->frame_hdr->frame_type & 1) || f->frame_hdr->allow_intrabc) {
         f->mvs_ref = dav1d_ref_create(f->sb128h * 16 * (f->b4_stride >> 1) *
@@ -3508,11 +3499,6 @@ int dav1d_submit_frame(Dav1dContext *const c) {
     } else {
         f->mvs_ref = NULL;
         memset(f->ref_mvs_ref, 0, sizeof(f->ref_mvs_ref));
-    }
-
-    //TOM
-    //if(!strcmp(cli_settings.metadatafile, "")){
-        fprintf(stdout, "bitdepthmax %d, ", f->bitdepth_max);  
     }
 
     // segmap
