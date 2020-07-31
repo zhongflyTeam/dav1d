@@ -35,30 +35,6 @@ static void write_indent(int indents)
     }
 }
 
-static void write_prop_int(const char *prop, int val, int indent, bool is_first)
-{
-    if (!is_first) {
-        wr(",");
-    }
-    write_indent(indent);
-    wr("\"");
-    wr(prop);
-    wr("\":");
-    wr_int(val);
-}
-
-static void write_prop_float(const char *prop, float val, int indent, bool is_first)
-{
-    if (!is_first) {
-        wr(",");
-    }
-    write_indent(indent);
-    wr("\"");
-    wr(prop);
-    wr("\":");
-    wr_float(val);
-}
-
 void output_frame_metadata(CLISettings *const cli_settings, Dav1dPicture *p)
 {
     if (cli_settings->metadatafile == NULL){

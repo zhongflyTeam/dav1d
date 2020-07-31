@@ -152,6 +152,7 @@ int main(const int argc, char *const *const argv) {
     uint64_t nspf, tfirst, elapsed;
     double i_fps;
     FILE *frametimes = NULL;
+    FILE *metadata_file = NULL;
     const char *version = dav1d_version();
 
     if (strcmp(version, DAV1D_VERSION)) {
@@ -321,3 +322,7 @@ int main(const int argc, char *const *const argv) {
 
     return (res == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
+
+    //void outputmetadata(){
+        
+    //}
