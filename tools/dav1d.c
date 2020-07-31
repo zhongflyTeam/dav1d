@@ -221,6 +221,9 @@ int main(const int argc, char *const *const argv) {
     }
     tfirst = get_time_nanos();
 
+    // Create metadata file
+    create_metadata(&cli_settings);
+
     do {
         memset(&p, 0, sizeof(p));
         if ((res = dav1d_send_data(c, &data)) < 0) {
@@ -240,21 +243,8 @@ int main(const int argc, char *const *const argv) {
             res = 0;
         } else {
 
-
-            // This is where the frame_type and frame_offset for each frame is outputted.
-            if (p.frame_hdr){
-                //metadata_file = fopen("./tmp/metadata.json", "w");
-
-            printf("FP: %d, %d\n",
-                p.frame_hdr->frame_type,
-                p.frame_hdr->frame_offset);
-            metadata_test();
-            metadata_begin(&cli_settings);
-            metadata_end(&cli_settings);
-            } else{
-            puts("none");
-            }
-
+            // metadata extraction point
+            output_frame_metadata(&cli_settings, &p);
 
             if (!n_out) {
                 if ((res = output_open(&out, cli_settings.muxer,
