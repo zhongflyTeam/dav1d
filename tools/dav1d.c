@@ -57,7 +57,7 @@
 
 #include "dav1d_cli_parse.h"
 
-//#include "metadata.h"
+#include "metadata.h"
 
 static uint64_t get_time_nanos(void) {
 #ifdef _WIN32
@@ -152,6 +152,7 @@ int main(const int argc, char *const *const argv) {
     uint64_t nspf, tfirst, elapsed;
     double i_fps;
     FILE *frametimes = NULL;
+    FILE *metadata_file = NULL;
     const char *version = dav1d_version();
 
     if (strcmp(version, DAV1D_VERSION)) {
@@ -238,17 +239,23 @@ int main(const int argc, char *const *const argv) {
             }
             res = 0;
         } else {
+
+
             // This is where the frame_type and frame_offset for each frame is outputted.
-            if (cli_settings.metadatafile != NULL){
-                if (p.frame_hdr){
-                printf("FP: %d, %d\n",
-                    p.frame_hdr->frame_type,
-                    p.frame_hdr->frame_offset);
-                    //metadata_begin();
-                } else{
-                puts("none");
-                }
+            if (p.frame_hdr){
+                //metadata_file = fopen("./tmp/metadata.json", "w");
+
+            printf("FP: %d, %d\n",
+                p.frame_hdr->frame_type,
+                p.frame_hdr->frame_offset);
+            metadata_test();
+            metadata_begin(&cli_settings);
+            metadata_end(&cli_settings);
+            } else{
+            puts("none");
             }
+
+
             if (!n_out) {
                 if ((res = output_open(&out, cli_settings.muxer,
                                        cli_settings.outputfile,
@@ -325,3 +332,7 @@ int main(const int argc, char *const *const argv) {
 
     return (res == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
+
+    //void outputmetadata(){
+        
+    //}

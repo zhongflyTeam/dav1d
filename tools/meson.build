@@ -75,6 +75,7 @@ cli_config_h_target = configure_file(output: 'cli_config.h', configuration: cli_
 dav1d_sources = files(
     'dav1d.c',
     'dav1d_cli_parse.c',
+    'metadata.c'
 )
 
 dav1d = executable('dav1d',
