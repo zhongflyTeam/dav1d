@@ -99,7 +99,7 @@ void create_metadata(CLISettings *const cli_settings)
     char filename[4096];
     snprintf(filename, filename_len, "%s", cli_settings->metadatafile);
 
-    #ifdef __linux__
+    #ifdef __linux__ || __APPLE__
         int tmp_dir = mkdir(filename, S_IRWXU | S_IRWXG);
     #else
         int tmp_dir = _mkdir(filename, S_IRWXU | S_IRWXG);
