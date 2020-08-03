@@ -22,10 +22,12 @@ static void wr_int(int v)
     fprintf(metadata_file, "%d", v);
 }
 
+/*
 static void wr_float(float f)
 {
     fprintf(metadata_file, "%.2f", f);
 }
+*/
 
 static void write_indent(int indents)
 {
