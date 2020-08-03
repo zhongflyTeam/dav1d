@@ -14,7 +14,7 @@ static int filename_len = 4096;
 
 static void wr(const char *text)
 {
-    fprintf(metadata_file, text);
+    fprintf(metadata_file, "%s", text);
 }
 
 static void wr_int(int v)
@@ -35,6 +35,30 @@ static void write_indent(int indents)
     }
 }
 
+static void write_prop_int(const char *prop, int val, int indent, bool is_first)
+{
+    if (!is_first) {
+        wr(",");
+    }
+    write_indent(indent);
+    wr("\"");
+    wr(prop);
+    wr("\":");
+    wr_int(val);
+}
+
+static void write_prop_float(const char *prop, float val, int indent, bool is_first)
+{
+    if (!is_first) {
+        wr(",");
+    }
+    write_indent(indent);
+    wr("\"");
+    wr(prop);
+    wr("\":");
+    wr_float(val);
+}
+
 void output_frame_metadata(CLISettings *const cli_settings, Dav1dPicture *p)
 {
     if (cli_settings->metadatafile == NULL){
@@ -49,7 +73,7 @@ void output_frame_metadata(CLISettings *const cli_settings, Dav1dPicture *p)
     if (p->frame_hdr){
         write_prop_int("frame_type", p->frame_hdr->frame_type, 1, true);
         write_prop_int("height", p->frame_hdr->height, 1, false);
-        write_prop_int("width", p->frame_hdr->width, 1, false);
+        write_prop_int("width", p->frame_hdr->width[0], 1, false);
         write_prop_int("frame_offset", p->frame_hdr->frame_offset, 1, false);
         //write_prop_int("width", p->m., 1, false);
     } else{
