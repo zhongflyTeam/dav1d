@@ -99,7 +99,12 @@ void create_metadata(CLISettings *const cli_settings)
     char filename[4096];
     snprintf(filename, filename_len, "%s", cli_settings->metadatafile);
 
-    int tmp_dir = mkdir(filename, S_IRWXU | S_IRWXG);
+    #ifdef __linux__
+        int tmp_dir = mkdir(filename, S_IRWXU | S_IRWXG);
+    #else
+        int tmp_dir = _mkdir(filename, S_IRWXU | S_IRWXG);
+    #endif
+
     if (tmp_dir != 0 && errno != EEXIST) {
         char cwd[4096];
         if (getcwd(cwd, sizeof(cwd)) == NULL)
