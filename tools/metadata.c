@@ -89,6 +89,17 @@ void output_frame_metadata(CLISettings *const cli_settings, Dav1dPicture *p)
     frame_count++;
 }
 
+static int make_directory(const char* name)
+   {
+       int res;
+   #ifdef __linux__
+       res = mkdir(name, 775);
+   #else
+       _res = mkdir(name);
+   #endif
+        return res;
+   }
+
 void create_metadata(CLISettings *const cli_settings)
 {
 
@@ -100,17 +111,13 @@ void create_metadata(CLISettings *const cli_settings)
     snprintf(filename, filename_len, "%s", cli_settings->metadatafile);
 
 
-    #ifdef _WIN32
-    int tmp_dir = mkdir(filename, 0777);
-    #else
-    int tmp_dir = mkdir(filename, S_IRWXU | S_IRWXG);
+    int tmp_dir = make_directory(filename);
     if (tmp_dir != 0 && errno != EEXIST) {
         char cwd[4096];
         if (getcwd(cwd, sizeof(cwd)) == NULL)
             strcpy(cwd, ".");
         printf("Failed to create %s/tmp directory! Errno: %d\n", cwd, errno);
     }
-    #endif
 
     frame_count = 0;
 }
