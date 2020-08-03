@@ -41,7 +41,11 @@
 #include "dav1d_cli_parse.h"
 #include "src/cpu.h"
 
+<<<<<<< HEAD
 static const char short_opts[] = "i:o:m:vql:s:";
+=======
+static const char short_opts[] = "mi:o:vql:s:";
+>>>>>>> a3dd2a5... Adding minimal support for metadata extraction.
 
 enum {
     ARG_DEMUXER = 256,
@@ -251,6 +255,10 @@ void parse(const int argc, char *const *const argv,
 
     while ((o = getopt_long(argc, argv, short_opts, long_opts, NULL)) != -1) {
         switch (o) {
+        case 'm':
+            cli_settings->metadata = 1;
+            break;
+
         case 'o':
             cli_settings->outputfile = optarg;
             break;
