@@ -95,7 +95,7 @@ static int make_directory(const char* name)
    #ifdef __linux__
        res = mkdir(name, 775);
    #else
-       _res = mkdir(name);
+       res = _mkdir(name);
    #endif
         return res;
    }
