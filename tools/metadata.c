@@ -110,15 +110,6 @@ void create_metadata(CLISettings *const cli_settings)
     char filename[4096];
     snprintf(filename, filename_len, "%s", cli_settings->metadatafile);
 
-
-    int tmp_dir = make_directory(filename);
-    if (tmp_dir != 0 && errno != EEXIST) {
-        char cwd[4096];
-        if (getcwd(cwd, sizeof(cwd)) == NULL)
-            strcpy(cwd, ".");
-        printf("Failed to create %s/tmp directory! Errno: %d\n", cwd, errno);
-    }
-
     frame_count = 0;
 }
 
