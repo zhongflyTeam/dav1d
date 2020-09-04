@@ -207,51 +207,6 @@ void output_frame_metadata(CLISettings *const cli_settings, Dav1dPicture *p)
     } else{
         puts("none");
     }
-
-
-    p->frame_hdr->loopfilter.mode_ref_deltas.mode_delta;
-
-    //cdef 
-    p->frame_hdr->cdef.y_strength[0]; //<-- int[8]
-    p->frame_hdr->cdef.damping; //<-- int
-    p->frame_hdr->cdef.uv_strength[0]; //<-- int[8]
-    p->frame_hdr->cdef.n_bits; //<-- int
-
-    p->data[0];//Y
-    p->data[1];//U
-    p->data[2];//V
-
-    p->frame_hdr->segmentation.seg_data.d[0].delta_lf_u; //int
-    p->frame_hdr->segmentation.seg_data.d[0].delta_lf_v; //int
-    p->frame_hdr->segmentation.seg_data.d[0].delta_lf_y_h; //int
-    p->frame_hdr->segmentation.seg_data.d[0].delta_lf_y_v; //int
-    p->frame_hdr->segmentation.seg_data.d[0].delta_q; //int
-    p->frame_hdr->segmentation.seg_data.d[0].globalmv; //int
-    p->frame_hdr->segmentation.seg_data.d[0].ref; //int
-    p->frame_hdr->segmentation.seg_data.d[0].skip; //int
-
-    p->frame_hdr->operating_points[0].buffer_removal_time; //int
-
-    p->frame_hdr->loopfilter.mode_ref_delta_update; //int
-    p->frame_hdr->loopfilter.sharpness; //int
-    p->frame_hdr->loopfilter.level_u; //int
-    p->frame_hdr->loopfilter.level_v; //int
-    p->frame_hdr->loopfilter.level_y; //int
-    p->frame_hdr->loopfilter.mode_ref_deltas.ref_delta[8]; //int
-    p->frame_hdr->loopfilter.mode_ref_deltas.mode_delta[0]; //int[2]
-
-    p->frame_hdr->gmv[0].abcd; //int
-    p->frame_hdr->gmv[0].alpha; //int
-    p->frame_hdr->gmv[0].beta; //int
-    p->frame_hdr->gmv[0].delta; //int
-    p->frame_hdr->gmv[0].gamma; //int
-    p->frame_hdr->gmv[0].matrix; //int
-    p->frame_hdr->gmv[0].type; //int
-
-    p->frame_hdr->film_grain.data; // <---------------------------
-
-
-
     metadata_end(cli_settings);
     frame_count++;
 }
