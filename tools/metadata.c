@@ -103,7 +103,7 @@ void output_frame_metadata(CLISettings *const cli_settings, Dav1dPicture *p)
         write_prop_int("height", p->frame_hdr->height, 1, false);
         write_prop_int("width", p->frame_hdr->width[0], 1, false);
         write_prop_int("frame_offset", p->frame_hdr->frame_offset, 1, false);
-        
+
         write_set("delta", 1, false);
         write_prop_int("delta_lf_multi", p->frame_hdr->delta.lf.multi, 2, true);
         write_prop_int("delta_lf_present", p->frame_hdr->delta.lf.present, 2, false);
@@ -181,10 +181,6 @@ void output_frame_metadata(CLISettings *const cli_settings, Dav1dPicture *p)
         write_prop_int("row_start_sb", p->frame_hdr->tiling.row_start_sb, 2, false);
         write_prop_int("uniform", p->frame_hdr->tiling.uniform, 2, false);
         write_prop_int("update", p->frame_hdr->tiling.update, 2, false);
-        end_set(1);
-
-        write_set("loopfilter", 1, false);
-        //write_prop_int("", p->frame_hdr->loopfilter.mode_ref_deltas.mode_delta, p->frame_hdr->loopfilter., );
         end_set(1);
 
         write_prop_int("existing_frame_idx", p->frame_hdr->existing_frame_idx, 1, false);
