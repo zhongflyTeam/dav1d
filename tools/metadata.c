@@ -103,7 +103,6 @@ void output_frame_metadata(CLISettings *const cli_settings, Dav1dPicture *p)
         write_prop_int("width", p->frame_hdr->width[0], 1, false);
         write_prop_int("frame_offset", p->frame_hdr->frame_offset, 1, false);
 
-        /*
         write_set("delta", 1, false);
         write_prop_int("delta_lf_multi", p->frame_hdr->delta.lf.multi, 2, true);
         write_prop_int("delta_lf_present", p->frame_hdr->delta.lf.present, 2, false);
@@ -200,7 +199,6 @@ void output_frame_metadata(CLISettings *const cli_settings, Dav1dPicture *p)
         write_prop_int("have_render_size", p->frame_hdr->have_render_size, 1, false);
         write_prop_int("primary_ref_frame", p->frame_hdr->primary_ref_frame, 1, false);
 
-        */
     metadata_end(cli_settings);
     frame_count++;
 }
