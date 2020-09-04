@@ -129,15 +129,15 @@ void output_frame_metadata(CLISettings *const cli_settings, Dav1dPicture *p)
         write_prop_int("show_existing_frame", p->frame_hdr->show_existing_frame, 1, false);
 
         write_set("skip_modes", 1, false);
-        write_prop_int("skip_mode_refs", p->frame_hdr->skip_mode_refs, 2, true);
+        write_prop_int("skip_mode_refs", p->frame_hdr->skip_mode_refs[0], 2, true);
         write_prop_int("skip_mode_allowed", p->frame_hdr->skip_mode_allowed, 2, false);
         write_prop_int("skip_mode_enabled", p->frame_hdr->skip_mode_enabled, 2, false);
         end_set(1);
 
         write_set("segmentation", 1, false);
         write_prop_int("enabled", p->frame_hdr->segmentation.enabled, 2, true);
-        write_prop_int("lossless", p->frame_hdr->segmentation.lossless, 2, false);
-        write_prop_int("qidx", p->frame_hdr->segmentation.qidx, 2, false);
+        write_prop_int("lossless", p->frame_hdr->segmentation.lossless[0], 2, false);
+        write_prop_int("qidx", p->frame_hdr->segmentation.qidx[0], 2, false);
         write_prop_int("temporal", p->frame_hdr->segmentation.temporal, 2, false);
         write_prop_int("update_data", p->frame_hdr->segmentation.update_data, 2, false);
         write_prop_int("update_map", p->frame_hdr->segmentation.update_map, 2, false);
@@ -147,7 +147,7 @@ void output_frame_metadata(CLISettings *const cli_settings, Dav1dPicture *p)
         write_prop_int("render_height", p->frame_hdr->render_height, 1, false);
         write_prop_int("refresh_frame_flags", p->frame_hdr->refresh_frame_flags, 1, false);
         write_prop_int("refresh_context", p->frame_hdr->refresh_context, 1, false);
-        write_prop_int("refidx", p->frame_hdr->refidx, 1, false);
+        write_prop_int("refidx", p->frame_hdr->refidx[0], 1, false);
         write_prop_int("reduced_txtp_set", p->frame_hdr->reduced_txtp_set, 1, false);
 
         write_set("quant", 1, false);
@@ -164,12 +164,12 @@ void output_frame_metadata(CLISettings *const cli_settings, Dav1dPicture *p)
         end_set(1);
 
         write_set("restoration", 1, false);
-        write_prop_int("restoration.type", p->frame_hdr->restoration.type, 2, true);
-        write_prop_int("restoration.unit_size", p->frame_hdr->restoration.unit_size, 2, false);
+        write_prop_int("restoration.type", p->frame_hdr->restoration.type[0], 2, true);
+        write_prop_int("restoration.unit_size", p->frame_hdr->restoration.unit_size[0], 2, false);
         end_set(1);
 
         write_set("tiling", 1, false);
-        write_prop_int("col_start_sb", p->frame_hdr->tiling.col_start_sb, 2, true);
+        write_prop_int("col_start_sb", p->frame_hdr->tiling.col_start_sb[0], 2, true);
         write_prop_int("cols", p->frame_hdr->tiling.cols, 2, false);
         write_prop_int("log2_cols", p->frame_hdr->tiling.log2_cols, 2, false);
         write_prop_int("log2_rows", p->frame_hdr->tiling.log2_rows, 2, false);
@@ -178,7 +178,7 @@ void output_frame_metadata(CLISettings *const cli_settings, Dav1dPicture *p)
         write_prop_int("min_log2_cols", p->frame_hdr->tiling.min_log2_cols, 2, false);
         write_prop_int("min_log2_rows", p->frame_hdr->tiling.min_log2_rows, 2, false);
         write_prop_int("n_bytes", p->frame_hdr->tiling.n_bytes, 2, false);
-        write_prop_int("row_start_sb", p->frame_hdr->tiling.row_start_sb, 2, false);
+        write_prop_int("row_start_sb", p->frame_hdr->tiling.row_start_sb[0], 2, false);
         write_prop_int("uniform", p->frame_hdr->tiling.uniform, 2, false);
         write_prop_int("update", p->frame_hdr->tiling.update, 2, false);
         end_set(1);
