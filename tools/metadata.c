@@ -94,16 +94,16 @@ void output_frame_metadata(CLISettings *const cli_settings, Dav1dPicture *p)
     }
 
     char filename[4096];
-    snprintf(filename, filename_len, "%s/frame_%d.json", cli_settings->metadatafile, frame_count);
+    snprintf(filename, filename_len, "frame_%d.json", frame_count);
     metadata_file = fopen(filename, "w");
 
     wr("{");
-    if (p->frame_hdr){
         write_prop_int("frame_type", p->frame_hdr->frame_type, 1, true);
         write_prop_int("height", p->frame_hdr->height, 1, false);
         write_prop_int("width", p->frame_hdr->width[0], 1, false);
         write_prop_int("frame_offset", p->frame_hdr->frame_offset, 1, false);
 
+        /*
         write_set("delta", 1, false);
         write_prop_int("delta_lf_multi", p->frame_hdr->delta.lf.multi, 2, true);
         write_prop_int("delta_lf_present", p->frame_hdr->delta.lf.present, 2, false);
@@ -200,9 +200,7 @@ void output_frame_metadata(CLISettings *const cli_settings, Dav1dPicture *p)
         write_prop_int("have_render_size", p->frame_hdr->have_render_size, 1, false);
         write_prop_int("primary_ref_frame", p->frame_hdr->primary_ref_frame, 1, false);
 
-    } else{
-        puts("none");
-    }
+        */
     metadata_end(cli_settings);
     frame_count++;
 }
