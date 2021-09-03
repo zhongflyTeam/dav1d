@@ -956,6 +956,24 @@ void bytefn(dav1d_read_coef_blocks)(Dav1dTileContext *const t,
     }
 }
 
+static void
+fetch_c(const pixel *src, const ptrdiff_t src_stride, const int w, int h)
+{
+    int tmp_h = h + 7;
+    src -= 3 * src_stride + 3;
+    do {
+        //for (int x = 0; x < w + 7; x += 64/sizeof(pixel))
+        //    __builtin_prefetch(src + x);
+        const pixel *tmp = (const pixel *)((uintptr_t) src & ~63);
+        const pixel *end = (const pixel *)((uintptr_t)(src + w + 7) & ~63);
+        for (; tmp <= end; tmp += 64/sizeof(pixel)) {
+            __builtin_prefetch(tmp);
+        }
+
+        src += src_stride;
+    } while (--tmp_h);
+}
+
 static int mc(Dav1dTileContext *const t,
               pixel *const dst8, int16_t *const dst16, const ptrdiff_t dst_stride,
               const int bw4, const int bh4,
@@ -973,10 +991,13 @@ static int mc(Dav1dTileContext *const t,
     ptrdiff_t ref_stride = refp->p.stride[!!pl];
     const pixel *ref;
 
+
     if (refp->p.p.w == f->cur.p.w && refp->p.p.h == f->cur.p.h) {
         const int dx = bx * h_mul + (mvx >> (3 + ss_hor));
         const int dy = by * v_mul + (mvy >> (3 + ss_ver));
         int w, h;
+        ref = ((pixel *) refp->p.data[pl]) + PXSTRIDE(ref_stride) * dy + dx;
+        fetch_c(ref, ref_stride, bw4 * h_mul, bh4 * v_mul);
 
         if (refp->p.data[0] != f->cur.data[0]) { // i.e. not for intrabc
             if (dav1d_thread_picture_wait(refp, dy + bh4 * v_mul + !!my * 4,
