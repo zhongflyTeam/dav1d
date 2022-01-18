@@ -330,7 +330,7 @@ static int decode_coefs(Dav1dTaskContext *const t,
     const Dav1dFrameContext *const f = t->f;
     const int lossless = f->frame_hdr->segmentation.lossless[b->seg_id];
     const TxfmInfo *const t_dim = &dav1d_txfm_dimensions[tx];
-    const int dbg = DEBUG_BLOCK_INFO && plane && 0;
+    const int dbg = DEBUG_CF_READING;
 
     if (dbg)
         printf("Start: r=%d\n", ts->msac.rng);
@@ -810,11 +810,11 @@ static void read_coef_tree(Dav1dTaskContext *const t,
         if (!(t->frame_thread.pass & 1)) {
             assert(dst);
             if (eob >= 0) {
-                if (DEBUG_BLOCK_INFO && DEBUG_B_PIXELS)
+                if (DEBUG_B_PIXELS)
                     coef_dump(cf, imin(t_dim->h, 8) * 4, imin(t_dim->w, 8) * 4, 3, "dq");
                 dsp->itx.itxfm_add[ytx][txtp](dst, f->cur.stride[0], cf, eob
                                               HIGHBD_CALL_SUFFIX);
-                if (DEBUG_BLOCK_INFO && DEBUG_B_PIXELS)
+                if (DEBUG_B_PIXELS)
                     hex_dump(dst, f->cur.stride[0], t_dim->w * 4, t_dim->h * 4, "recon");
             }
         }
@@ -886,7 +886,7 @@ void bytefn(dav1d_read_coef_blocks)(Dav1dTaskContext *const t,
                             decode_coefs(t, &t->a->lcoef[bx4 + x],
                                          &t->l.lcoef[by4 + y], b->tx, bs, b, 1,
                                          0, ts->frame_thread[1].cf, &txtp, &cf_ctx);
-                        if (DEBUG_BLOCK_INFO)
+                        if (DEBUG_B_DETAILS)
                             printf("Post-y-cf-blk[tx=%d,txtp=%d,eob=%d]: r=%d\n",
                                    b->tx, txtp, eob, ts->msac.rng);
                         cbi[t->bx].txtp[0] = txtp;
@@ -930,7 +930,7 @@ void bytefn(dav1d_read_coef_blocks)(Dav1dTaskContext *const t,
                                          &t->l.ccoef[pl][cby4 + y], b->uvtx, bs,
                                          b, b->intra, 1 + pl, ts->frame_thread[1].cf,
                                          &txtp, &cf_ctx);
-                        if (DEBUG_BLOCK_INFO)
+                        if (DEBUG_B_DETAILS)
                             printf("Post-uv-cf-blk[pl=%d,tx=%d,"
                                    "txtp=%d,eob=%d]: r=%d\n",
                                    pl, b->uvtx, txtp, eob, ts->msac.rng);
@@ -1030,12 +1030,6 @@ static int mc(Dav1dTaskContext *const t,
         const int bottom =
             ((pos_y + (bh4 * v_mul - 1) * f->svc[refidx][1].step) >> 10) + 1;
 
-        if (DEBUG_BLOCK_INFO)
-            printf("Off %dx%d [%d,%d,%d], size %dx%d [%d,%d]\n",
-                   left, top, orig_pos_x, f->svc[refidx][0].scale, refidx,
-                   right-left, bottom-top,
-                   f->svc[refidx][0].step, f->svc[refidx][1].step);
-
         const int w = (refp->p.p.w + ss_hor) >> ss_hor;
         const int h = (refp->p.p.h + ss_ver) >> ss_ver;
         if (left < 3 || top < 3 || right + 4 > w || bottom + 4 > h) {
@@ -1046,7 +1040,6 @@ static int mc(Dav1dTaskContext *const t,
                                 refp->p.data[pl], ref_stride);
             ref = &emu_edge_buf[320 * 3 + 3];
             ref_stride = 320 * sizeof(pixel);
-            if (DEBUG_BLOCK_INFO) printf("Emu\n");
         } else {
             ref = ((pixel *) refp->p.data[pl]) + PXSTRIDE(ref_stride) * top + left;
         }
@@ -1241,7 +1234,7 @@ void bytefn(dav1d_recon_b_intra)(Dav1dTaskContext *const t, const enum BlockSize
                                         ((t->bx >> 1) + (t->by & 1))][0] : t->scratch.pal[0];
                 f->dsp->ipred.pal_pred(dst, f->cur.stride[0], pal,
                                        pal_idx, bw4 * 4, bh4 * 4);
-                if (DEBUG_BLOCK_INFO && DEBUG_B_PIXELS)
+                if (DEBUG_B_PIXELS)
                     hex_dump(dst, PXSTRIDE(f->cur.stride[0]),
                              bw4 * 4, bh4 * 4, "y-pal-pred");
             }
@@ -1298,7 +1291,7 @@ void bytefn(dav1d_recon_b_intra)(Dav1dTaskContext *const t, const enum BlockSize
                                              4 * f->bh - 4 * t->by
                                              HIGHBD_CALL_SUFFIX);
 
-                    if (DEBUG_BLOCK_INFO && DEBUG_B_PIXELS) {
+                    if (DEBUG_B_PIXELS) {
                         hex_dump(edge - t_dim->h * 4, t_dim->h * 4,
                                  t_dim->h * 4, 2, "l");
                         hex_dump(edge, 0, 1, 1, "tl");
@@ -1327,7 +1320,7 @@ void bytefn(dav1d_recon_b_intra)(Dav1dTaskContext *const t, const enum BlockSize
                             eob = decode_coefs(t, &t->a->lcoef[bx4 + x],
                                                &t->l.lcoef[by4 + y], b->tx, bs,
                                                b, 1, 0, cf, &txtp, &cf_ctx);
-                            if (DEBUG_BLOCK_INFO)
+                            if (DEBUG_B_DETAILS)
                                 printf("Post-y-cf-blk[tx=%d,txtp=%d,eob=%d]: r=%d\n",
                                        b->tx, txtp, eob, ts->msac.rng);
 #define set_ctx(type, dir, diridx, off, mul, rep_macro) \
@@ -1342,14 +1335,14 @@ void bytefn(dav1d_recon_b_intra)(Dav1dTaskContext *const t, const enum BlockSize
 #undef set_ctx
                         }
                         if (eob >= 0) {
-                            if (DEBUG_BLOCK_INFO && DEBUG_B_PIXELS)
+                            if (DEBUG_B_PIXELS)
                                 coef_dump(cf, imin(t_dim->h, 8) * 4,
                                           imin(t_dim->w, 8) * 4, 3, "dq");
                             dsp->itx.itxfm_add[b->tx]
                                               [txtp](dst,
                                                      f->cur.stride[0],
                                                      cf, eob HIGHBD_CALL_SUFFIX);
-                            if (DEBUG_BLOCK_INFO && DEBUG_B_PIXELS)
+                            if (DEBUG_B_PIXELS)
                                 hex_dump(dst, f->cur.stride[0],
                                          t_dim->w * 4, t_dim->h * 4, "recon");
                         }
@@ -1416,7 +1409,7 @@ void bytefn(dav1d_recon_b_intra)(Dav1dTaskContext *const t, const enum BlockSize
                                            ac, b->cfl_alpha[pl]
                                            HIGHBD_CALL_SUFFIX);
                 }
-                if (DEBUG_BLOCK_INFO && DEBUG_B_PIXELS) {
+                if (DEBUG_B_PIXELS) {
                     ac_dump(ac, 4*cbw4, 4*cbh4, "ac");
                     hex_dump(uv_dst[0], stride, cbw4 * 4, cbh4 * 4, "u-cfl-pred");
                     hex_dump(uv_dst[1], stride, cbw4 * 4, cbh4 * 4, "v-cfl-pred");
@@ -1444,7 +1437,7 @@ void bytefn(dav1d_recon_b_intra)(Dav1dTaskContext *const t, const enum BlockSize
                 f->dsp->ipred.pal_pred(((pixel *) f->cur.data[2]) + uv_dstoff,
                                        f->cur.stride[1], pal[2],
                                        pal_idx, cbw4 * 4, cbh4 * 4);
-                if (DEBUG_BLOCK_INFO && DEBUG_B_PIXELS) {
+                if (DEBUG_B_PIXELS) {
                     hex_dump(((pixel *) f->cur.data[1]) + uv_dstoff,
                              PXSTRIDE(f->cur.stride[1]),
                              cbw4 * 4, cbh4 * 4, "u-pal-pred");
@@ -1522,7 +1515,7 @@ void bytefn(dav1d_recon_b_intra)(Dav1dTaskContext *const t, const enum BlockSize
                                                  (4 * f->bh + ss_ver -
                                                   4 * (t->by & ~ss_ver)) >> ss_ver
                                                  HIGHBD_CALL_SUFFIX);
-                        if (DEBUG_BLOCK_INFO && DEBUG_B_PIXELS) {
+                        if (DEBUG_B_PIXELS) {
                             hex_dump(edge - uv_t_dim->h * 4, uv_t_dim->h * 4,
                                      uv_t_dim->h * 4, 2, "l");
                             hex_dump(edge, 0, 1, 1, "tl");
@@ -1552,7 +1545,7 @@ void bytefn(dav1d_recon_b_intra)(Dav1dTaskContext *const t, const enum BlockSize
                                                    &t->l.ccoef[pl][cby4 + y],
                                                    b->uvtx, bs, b, 1, 1 + pl, cf,
                                                    &txtp, &cf_ctx);
-                                if (DEBUG_BLOCK_INFO)
+                                if (DEBUG_B_DETAILS)
                                     printf("Post-uv-cf-blk[pl=%d,tx=%d,"
                                            "txtp=%d,eob=%d]: r=%d [x=%d,cbx4=%d]\n",
                                            pl, b->uvtx, txtp, eob, ts->msac.rng, x, cbx4);
@@ -1570,13 +1563,13 @@ void bytefn(dav1d_recon_b_intra)(Dav1dTaskContext *const t, const enum BlockSize
 #undef set_ctx
                             }
                             if (eob >= 0) {
-                                if (DEBUG_BLOCK_INFO && DEBUG_B_PIXELS)
+                                if (DEBUG_B_PIXELS)
                                     coef_dump(cf, uv_t_dim->h * 4,
                                               uv_t_dim->w * 4, 3, "dq");
                                 dsp->itx.itxfm_add[b->uvtx]
                                                   [txtp](dst, stride,
                                                          cf, eob HIGHBD_CALL_SUFFIX);
-                                if (DEBUG_BLOCK_INFO && DEBUG_B_PIXELS)
+                                if (DEBUG_B_PIXELS)
                                     hex_dump(dst, stride, uv_t_dim->w * 4,
                                              uv_t_dim->h * 4, "recon");
                             }
@@ -1916,7 +1909,7 @@ int bytefn(dav1d_recon_b_inter)(Dav1dTaskContext *const t, const enum BlockSize 
         }
     }
 
-    if (DEBUG_BLOCK_INFO && DEBUG_B_PIXELS) {
+    if (DEBUG_B_PIXELS) {
         hex_dump(dst, f->cur.stride[0], b_dim[0] * 4, b_dim[1] * 4, "y-pred");
         if (has_chroma) {
             hex_dump(&((pixel *) f->cur.data[1])[uvdstoff], f->cur.stride[1],
@@ -2004,7 +1997,7 @@ int bytefn(dav1d_recon_b_inter)(Dav1dTaskContext *const t, const enum BlockSize 
                                                &t->l.ccoef[pl][cby4 + y],
                                                b->uvtx, bs, b, 0, 1 + pl,
                                                cf, &txtp, &cf_ctx);
-                            if (DEBUG_BLOCK_INFO)
+                            if (DEBUG_B_DETAILS)
                                 printf("Post-uv-cf-blk[pl=%d,tx=%d,"
                                        "txtp=%d,eob=%d]: r=%d\n",
                                        pl, b->uvtx, txtp, eob, ts->msac.rng);
@@ -2022,13 +2015,13 @@ int bytefn(dav1d_recon_b_inter)(Dav1dTaskContext *const t, const enum BlockSize 
 #undef set_ctx
                         }
                         if (eob >= 0) {
-                            if (DEBUG_BLOCK_INFO && DEBUG_B_PIXELS)
+                            if (DEBUG_B_PIXELS)
                                 coef_dump(cf, uvtx->h * 4, uvtx->w * 4, 3, "dq");
                             dsp->itx.itxfm_add[b->uvtx]
                                               [txtp](&uvdst[4 * x],
                                                      f->cur.stride[1],
                                                      cf, eob HIGHBD_CALL_SUFFIX);
-                            if (DEBUG_BLOCK_INFO && DEBUG_B_PIXELS)
+                            if (DEBUG_B_PIXELS)
                                 hex_dump(&uvdst[4 * x], f->cur.stride[1],
                                          uvtx->w * 4, uvtx->h * 4, "recon");
                         }

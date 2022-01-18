@@ -62,6 +62,7 @@ enum {
     ARG_NEG_STRIDE,
     ARG_OUTPUT_INVISIBLE,
     ARG_INLOOP_FILTERS,
+    ARG_DEBUG_BLOCK_INFO,
 };
 
 static const struct option long_opts[] = {
@@ -88,6 +89,7 @@ static const struct option long_opts[] = {
     { "negstride",       0, NULL, ARG_NEG_STRIDE },
     { "outputinvisible", 1, NULL, ARG_OUTPUT_INVISIBLE },
     { "inloopfilters",   1, NULL, ARG_INLOOP_FILTERS },
+    { "debugblockinfo",  1, NULL, ARG_DEBUG_BLOCK_INFO },
     { NULL,              0, NULL, 0 },
 };
 
@@ -273,6 +275,61 @@ static unsigned parse_enum(char *optarg, const EnumParseTable *const tbl,
     return res;
 }
 
+static void parse_debug_block_info(Dav1dSettings *const lib_settings,
+                                   char *optarg, const char *const app)
+{
+    char *str = optarg;
+    unsigned mask = 0;
+    while (*str) {
+        char *end = strchr(str, ',');
+        if (!end) end = str + strlen(str);
+        char *sep = strchr(str, ':');
+        if (!sep || sep > end) { printf("Failed to find ':' for %s\n", str); goto err; }
+        const int keylen = (int) (sep - str);
+        char *arg_end;
+        if (keylen == 3 && !strncmp(str, "poc", keylen)) {
+            mask |= 0x1;
+            lib_settings->debug.poc = (int) strtoul(&sep[1], &arg_end, 0);
+        } else if (keylen == 2 && !strncmp(str, "bx", keylen)) {
+            mask |= 0x2;
+            char *hyphen = strchr(&sep[1], '-');
+            if (!hyphen || hyphen > end) { printf("Failed to find '-' for %s\n", &sep[1]); goto err; }
+            lib_settings->debug.from_bx = (int) strtoul(&sep[1], &arg_end, 0);
+            if (hyphen != arg_end) { printf("Parsing of first value in bx failed\n"); goto err; }
+            lib_settings->debug.to_bx = (int) strtoul(&hyphen[1], &arg_end, 0);
+        } else if (keylen == 2 && !strncmp(str, "by", keylen)) {
+            mask |= 0x4;
+            char *hyphen = strchr(&sep[1], '-');
+            if (!hyphen || hyphen > end) { printf("Failed to find '-' for %s\n", &sep[1]); goto err; }
+            lib_settings->debug.from_by = (int) strtoul(&sep[1], &arg_end, 0);
+            if (hyphen != arg_end) { printf("Parsing of first value in by failed\n"); goto err; }
+            lib_settings->debug.to_by = (int) strtoul(&hyphen[1], &arg_end, 0);
+        } else if (keylen == 6 && !strncmp(str, "dumppx", keylen)) {
+            lib_settings->debug.dump_pixels = (int) strtoul(&sep[1], &arg_end, 0);
+        } else if (keylen == 6 && !strncmp(str, "cfread", keylen)) {
+            lib_settings->debug.coef_reading = (int) strtoul(&sep[1], &arg_end, 0);
+        } else if (keylen == 10 && !strncmp(str, "blkdetails", keylen)) {
+            lib_settings->debug.block_details = (int) strtoul(&sep[1], &arg_end, 0);
+        } else {
+            printf("Could not find key %s of len %d\n", str, keylen);
+            goto err;
+        }
+        if (end != arg_end) {
+            printf("Failed to parse %*s\n", keylen, str);
+            goto err;
+        }
+        str = end;
+        if (*str == ',') str++;
+    }
+    if (mask & 0x7) return;
+    printf("Incomplete mask %x\n", mask);
+err:
+    error(app, optarg, ARG_DEBUG_BLOCK_INFO,
+          "a comma-separated list of the key/value pairs 'poc:num', "
+          "'bx:from-to', 'by:from-to', 'dumppx:bool', 'blkdetails:bool' "
+          " or 'cfread:bool'");
+}
+
 void parse(const int argc, char *const *const argv,
            CLISettings *const cli_settings, Dav1dSettings *const lib_settings)
 {
@@ -381,6 +438,10 @@ void parse(const int argc, char *const *const argv,
             lib_settings->inloop_filters =
                 parse_enum(optarg, inloop_filters_tbl,
                            ARRAY_SIZE(inloop_filters_tbl),ARG_INLOOP_FILTERS, argv[0]);
+            break;
+        case ARG_DEBUG_BLOCK_INFO:
+            lib_settings->debug.on = 1;
+            parse_debug_block_info(lib_settings, optarg, argv[0]);
             break;
         default:
             usage(argv[0], NULL);

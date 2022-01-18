@@ -159,6 +159,15 @@ struct Dav1dContext {
     int strict_std_compliance;
     int output_invisible_frames;
     enum Dav1dInloopFilterType inloop_filters;
+    struct {
+        int on;
+        int poc;
+        int from_bx, to_bx;
+        int from_by, to_by;
+        int block_details;
+        int dump_pixels;
+        int coef_reading;
+    } debug;
     int drain;
     enum PictureFlags frame_flags;
     enum Dav1dEventFlags event_flags;

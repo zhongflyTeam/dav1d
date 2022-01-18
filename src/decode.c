@@ -461,7 +461,7 @@ static void read_pal_plane(Dav1dTaskContext *const t, Av1Block *const b,
         memcpy(pal, used_cache, n_used_cache * sizeof(*used_cache));
     }
 
-    if (DEBUG_BLOCK_INFO) {
+    if (DEBUG_B_DETAILS) {
         printf("Post-pal[pl=%d,sz=%d,cache_size=%d,used_cache=%d]: r=%d, cache=",
                pl, pal_sz, n_cache, n_used_cache, ts->msac.rng);
         for (int n = 0; n < n_cache; n++)
@@ -498,7 +498,7 @@ static void read_pal_uv(Dav1dTaskContext *const t, Av1Block *const b,
         for (int i = 0; i < b->pal_sz[1]; i++)
             pal[i] = dav1d_msac_decode_bools(&ts->msac, f->cur.p.bpc);
     }
-    if (DEBUG_BLOCK_INFO) {
+    if (DEBUG_B_DETAILS) {
         printf("Post-pal[pl=2]: r=%d ", ts->msac.rng);
         for (int n = 0; n < b->pal_sz[1]; n++)
             printf("%c%02x", n ? ' ' : '[', pal[n]);
@@ -657,7 +657,7 @@ static void read_vartx_tree(Dav1dTaskContext *const t,
             t->by += ytx->h;
         }
         t->by -= y;
-        if (DEBUG_BLOCK_INFO)
+        if (DEBUG_B_DETAILS)
             printf("Post-vartxtree[%x/%x]: r=%d\n",
                    tx_split[0], tx_split[1], t->ts->msac.rng);
         b->uvtx = dav1d_max_txfm_size_for_bs[bs][f->cur.p.layout];
@@ -912,7 +912,7 @@ static int decode_b(Dav1dTaskContext *const t,
                                           t->bx, t->by);
                     dav1d_get_shear_params(&t->warpmv);
 #define signabs(v) v < 0 ? '-' : ' ', abs(v)
-                    if (DEBUG_BLOCK_INFO)
+                    if (DEBUG_B_DETAILS)
                         printf("[ %c%x %c%x %c%x\n  %c%x %c%x %c%x ]\n"
                                "alpha=%c%x, beta=%c%x, gamma=%c%x, delta=%c%x, mv=y:%d,x:%d\n",
                                signabs(t->warpmv.matrix[0]),
@@ -1021,7 +1021,7 @@ static int decode_b(Dav1dTaskContext *const t,
                 if (b->seg_id >= DAV1D_MAX_SEGMENTS) b->seg_id = 0; // error?
             }
 
-            if (DEBUG_BLOCK_INFO)
+            if (DEBUG_B_DETAILS)
                 printf("Post-segid[preskip;%d]: r=%d\n",
                        b->seg_id, ts->msac.rng);
 
@@ -1038,7 +1038,7 @@ static int decode_b(Dav1dTaskContext *const t,
         const int smctx = t->a->skip_mode[bx4] + t->l.skip_mode[by4];
         b->skip_mode = dav1d_msac_decode_bool_adapt(&ts->msac,
                            ts->cdf.m.skip_mode[smctx]);
-        if (DEBUG_BLOCK_INFO)
+        if (DEBUG_B_DETAILS)
             printf("Post-skipmode[%d]: r=%d\n", b->skip_mode, ts->msac.rng);
     } else {
         b->skip_mode = 0;
@@ -1050,7 +1050,7 @@ static int decode_b(Dav1dTaskContext *const t,
     } else {
         const int sctx = t->a->skip[bx4] + t->l.skip[by4];
         b->skip = dav1d_msac_decode_bool_adapt(&ts->msac, ts->cdf.m.skip[sctx]);
-        if (DEBUG_BLOCK_INFO)
+        if (DEBUG_B_DETAILS)
             printf("Post-skip[%d]: r=%d\n", b->skip, ts->msac.rng);
     }
 
@@ -1096,7 +1096,7 @@ static int decode_b(Dav1dTaskContext *const t,
 
         seg = &f->frame_hdr->segmentation.seg_data.d[b->seg_id];
 
-        if (DEBUG_BLOCK_INFO)
+        if (DEBUG_B_DETAILS)
             printf("Post-segid[postskip;%d]: r=%d\n",
                    b->seg_id, ts->msac.rng);
     }
@@ -1113,7 +1113,7 @@ static int decode_b(Dav1dTaskContext *const t,
             if (bh4 > 16) t->cur_sb_cdef_idx_ptr[idx + 2] = v;
             if (bw4 == 32 && bh4 == 32) t->cur_sb_cdef_idx_ptr[idx + 3] = v;
 
-            if (DEBUG_BLOCK_INFO)
+            if (DEBUG_B_DETAILS)
                 printf("Post-cdef_idx[%d]: r=%d\n",
                         *t->cur_sb_cdef_idx_ptr, ts->msac.rng);
         }
@@ -1143,7 +1143,7 @@ static int decode_b(Dav1dTaskContext *const t,
                 delta_q *= 1 << f->frame_hdr->delta.q.res_log2;
             }
             ts->last_qidx = iclip(ts->last_qidx + delta_q, 1, 255);
-            if (have_delta_q && DEBUG_BLOCK_INFO)
+            if (have_delta_q && DEBUG_B_DETAILS)
                 printf("Post-delta_q[%d->%d]: r=%d\n",
                        delta_q, ts->last_qidx, ts->msac.rng);
 
@@ -1166,7 +1166,7 @@ static int decode_b(Dav1dTaskContext *const t,
                     }
                     ts->last_delta_lf[i] =
                         iclip(ts->last_delta_lf[i] + delta_lf, -63, 63);
-                    if (have_delta_q && DEBUG_BLOCK_INFO)
+                    if (have_delta_q && DEBUG_B_DETAILS)
                         printf("Post-delta_lf[%d:%d]: r=%d\n", i, delta_lf,
                                ts->msac.rng);
                 }
@@ -1200,12 +1200,12 @@ static int decode_b(Dav1dTaskContext *const t,
                                            have_top, have_left);
             b->intra = !dav1d_msac_decode_bool_adapt(&ts->msac,
                             ts->cdf.m.intra[ictx]);
-            if (DEBUG_BLOCK_INFO)
+            if (DEBUG_B_DETAILS)
                 printf("Post-intra[%d]: r=%d\n", b->intra, ts->msac.rng);
         }
     } else if (f->frame_hdr->allow_intrabc) {
         b->intra = !dav1d_msac_decode_bool_adapt(&ts->msac, ts->cdf.m.intrabc);
-        if (DEBUG_BLOCK_INFO)
+        if (DEBUG_B_DETAILS)
             printf("Post-intrabcflag[%d]: r=%d\n", b->intra, ts->msac.rng);
     } else {
         b->intra = 1;
@@ -1219,7 +1219,7 @@ static int decode_b(Dav1dTaskContext *const t,
                         [dav1d_intra_mode_context[t->l.mode[by4]]];
         b->y_mode = dav1d_msac_decode_symbol_adapt16(&ts->msac, ymode_cdf,
                                                      N_INTRA_PRED_MODES - 1);
-        if (DEBUG_BLOCK_INFO)
+        if (DEBUG_B_DETAILS)
             printf("Post-ymode[%d]: r=%d\n", b->y_mode, ts->msac.rng);
 
         // angle delta
@@ -1239,7 +1239,7 @@ static int decode_b(Dav1dTaskContext *const t,
             uint16_t *const uvmode_cdf = ts->cdf.m.uv_mode[cfl_allowed][b->y_mode];
             b->uv_mode = dav1d_msac_decode_symbol_adapt16(&ts->msac, uvmode_cdf,
                              N_UV_INTRA_PRED_MODES - 1 - !cfl_allowed);
-            if (DEBUG_BLOCK_INFO)
+            if (DEBUG_B_DETAILS)
                 printf("Post-uvmode[%d]: r=%d\n", b->uv_mode, ts->msac.rng);
 
             if (b->uv_mode == CFL_PRED) {
@@ -1265,7 +1265,7 @@ static int decode_b(Dav1dTaskContext *const t,
                     b->cfl_alpha[1] = 0;
                 }
 #undef SIGN
-                if (DEBUG_BLOCK_INFO)
+                if (DEBUG_B_DETAILS)
                     printf("Post-uvalphas[%d/%d]: r=%d\n",
                            b->cfl_alpha[0], b->cfl_alpha[1], ts->msac.rng);
             } else if (b_dim[2] + b_dim[3] >= 2 && b->uv_mode >= VERT_PRED &&
@@ -1288,7 +1288,7 @@ static int decode_b(Dav1dTaskContext *const t,
                 const int pal_ctx = (t->a->pal_sz[bx4] > 0) + (t->l.pal_sz[by4] > 0);
                 const int use_y_pal = dav1d_msac_decode_bool_adapt(&ts->msac,
                                           ts->cdf.m.pal_y[sz_ctx][pal_ctx]);
-                if (DEBUG_BLOCK_INFO)
+                if (DEBUG_B_DETAILS)
                     printf("Post-y_pal[%d]: r=%d\n", use_y_pal, ts->msac.rng);
                 if (use_y_pal)
                     read_pal_plane(t, b, 0, sz_ctx, bx4, by4);
@@ -1298,7 +1298,7 @@ static int decode_b(Dav1dTaskContext *const t,
                 const int pal_ctx = b->pal_sz[0] > 0;
                 const int use_uv_pal = dav1d_msac_decode_bool_adapt(&ts->msac,
                                            ts->cdf.m.pal_uv[pal_ctx]);
-                if (DEBUG_BLOCK_INFO)
+                if (DEBUG_B_DETAILS)
                     printf("Post-uv_pal[%d]: r=%d\n", use_uv_pal, ts->msac.rng);
                 if (use_uv_pal) // see aomedia bug 2183 for why we use luma coordinates
                     read_pal_uv(t, b, sz_ctx, bx4, by4);
@@ -1315,7 +1315,7 @@ static int decode_b(Dav1dTaskContext *const t,
                 b->y_angle = dav1d_msac_decode_symbol_adapt4(&ts->msac,
                                  ts->cdf.m.filter_intra, 4);
             }
-            if (DEBUG_BLOCK_INFO)
+            if (DEBUG_B_DETAILS)
                 printf("Post-filterintramode[%d/%d]: r=%d\n",
                        b->y_mode, b->y_angle, ts->msac.rng);
         }
@@ -1330,7 +1330,7 @@ static int decode_b(Dav1dTaskContext *const t,
             } else
                 pal_idx = t->scratch.pal_idx;
             read_pal_indices(t, pal_idx, b, 0, w4, h4, bw4, bh4);
-            if (DEBUG_BLOCK_INFO)
+            if (DEBUG_B_DETAILS)
                 printf("Post-y-pal-indices: r=%d\n", ts->msac.rng);
         }
 
@@ -1344,7 +1344,7 @@ static int decode_b(Dav1dTaskContext *const t,
             } else
                 pal_idx = &t->scratch.pal_idx[bw4 * bh4 * 16];
             read_pal_indices(t, pal_idx, b, 1, cw4, ch4, cbw4, cbh4);
-            if (DEBUG_BLOCK_INFO)
+            if (DEBUG_B_DETAILS)
                 printf("Post-uv-pal-indices: r=%d\n", ts->msac.rng);
         }
 
@@ -1367,7 +1367,7 @@ static int decode_b(Dav1dTaskContext *const t,
                     t_dim = &dav1d_txfm_dimensions[b->tx];
                 }
             }
-            if (DEBUG_BLOCK_INFO)
+            if (DEBUG_B_DETAILS)
                 printf("Post-tx[%d]: r=%d\n", b->tx, ts->msac.rng);
         }
 
@@ -1527,7 +1527,7 @@ static int decode_b(Dav1dTaskContext *const t,
         b->mv[0].x = (src_left - t->bx * 4) * 8;
         b->mv[0].y = (src_top  - t->by * 4) * 8;
 
-        if (DEBUG_BLOCK_INFO)
+        if (DEBUG_B_DETAILS)
             printf("Post-dmv[%d/%d,ref=%d/%d|%d/%d]: r=%d\n",
                    b->mv[0].y, b->mv[0].x, ref.y, ref.x,
                    mvstack[0].mv.mv[0].y, mvstack[0].mv.mv[0].x, ts->msac.rng);
@@ -1576,7 +1576,7 @@ static int decode_b(Dav1dTaskContext *const t,
                                          have_top, have_left);
             is_comp = dav1d_msac_decode_bool_adapt(&ts->msac,
                           ts->cdf.m.comp[ctx]);
-            if (DEBUG_BLOCK_INFO)
+            if (DEBUG_B_DETAILS)
                 printf("Post-compflag[%d]: r=%d\n", is_comp, ts->msac.rng);
         } else {
             is_comp = 0;
@@ -1601,7 +1601,7 @@ static int decode_b(Dav1dTaskContext *const t,
             b->mv[1] = mvstack[0].mv.mv[1];
             fix_mv_precision(f->frame_hdr, &b->mv[0]);
             fix_mv_precision(f->frame_hdr, &b->mv[1]);
-            if (DEBUG_BLOCK_INFO)
+            if (DEBUG_B_DETAILS)
                 printf("Post-skipmodeblock[mv=1:y=%d,x=%d,2:y=%d,x=%d,refs=%d+%d\n",
                        b->mv[0].y, b->mv[0].x, b->mv[1].y, b->mv[1].x,
                        b->ref[0], b->ref[1]);
@@ -1664,7 +1664,7 @@ static int decode_b(Dav1dTaskContext *const t,
                     }
                 }
             }
-            if (DEBUG_BLOCK_INFO)
+            if (DEBUG_B_DETAILS)
                 printf("Post-refs[%d/%d]: r=%d\n",
                        b->ref[0], b->ref[1], ts->msac.rng);
 
@@ -1678,7 +1678,7 @@ static int decode_b(Dav1dTaskContext *const t,
             b->inter_mode = dav1d_msac_decode_symbol_adapt8(&ts->msac,
                                 ts->cdf.m.comp_inter_mode[ctx],
                                 N_COMP_INTER_PRED_MODES - 1);
-            if (DEBUG_BLOCK_INFO)
+            if (DEBUG_B_DETAILS)
                 printf("Post-compintermode[%d,ctx=%d,n_mvs=%d]: r=%d\n",
                        b->inter_mode, ctx, n_mvs, ts->msac.rng);
 
@@ -1694,7 +1694,7 @@ static int decode_b(Dav1dTaskContext *const t,
                         b->drl_idx += dav1d_msac_decode_bool_adapt(&ts->msac,
                                           ts->cdf.m.drl_bit[drl_ctx_v2]);
                     }
-                    if (DEBUG_BLOCK_INFO)
+                    if (DEBUG_B_DETAILS)
                         printf("Post-drlidx[%d,n_mvs=%d]: r=%d\n",
                                b->drl_idx, n_mvs, ts->msac.rng);
                 }
@@ -1709,7 +1709,7 @@ static int decode_b(Dav1dTaskContext *const t,
                         b->drl_idx += dav1d_msac_decode_bool_adapt(&ts->msac,
                                           ts->cdf.m.drl_bit[drl_ctx_v3]);
                     }
-                    if (DEBUG_BLOCK_INFO)
+                    if (DEBUG_B_DETAILS)
                         printf("Post-drlidx[%d,n_mvs=%d]: r=%d\n",
                                b->drl_idx, n_mvs, ts->msac.rng);
                 }
@@ -1740,7 +1740,7 @@ static int decode_b(Dav1dTaskContext *const t,
             assign_comp_mv(0);
             assign_comp_mv(1);
 #undef assign_comp_mv
-            if (DEBUG_BLOCK_INFO)
+            if (DEBUG_B_DETAILS)
                 printf("Post-residual_mv[1:y=%d,x=%d,2:y=%d,x=%d]: r=%d\n",
                        b->mv[0].y, b->mv[0].x, b->mv[1].y, b->mv[1].x,
                        ts->msac.rng);
@@ -1752,7 +1752,7 @@ static int decode_b(Dav1dTaskContext *const t,
 
                 is_segwedge = dav1d_msac_decode_bool_adapt(&ts->msac,
                                   ts->cdf.m.mask_comp[mask_ctx]);
-                if (DEBUG_BLOCK_INFO)
+                if (DEBUG_B_DETAILS)
                     printf("Post-segwedge_vs_jntavg[%d,ctx=%d]: r=%d\n",
                            is_segwedge, mask_ctx, ts->msac.rng);
             }
@@ -1768,7 +1768,7 @@ static int decode_b(Dav1dTaskContext *const t,
                     b->comp_type = COMP_INTER_WEIGHTED_AVG +
                                    dav1d_msac_decode_bool_adapt(&ts->msac,
                                        ts->cdf.m.jnt_comp[jnt_ctx]);
-                    if (DEBUG_BLOCK_INFO)
+                    if (DEBUG_B_DETAILS)
                         printf("Post-jnt_comp[%d,ctx=%d[ac:%d,ar:%d,lc:%d,lr:%d]]: r=%d\n",
                                b->comp_type == COMP_INTER_AVG,
                                jnt_ctx, t->a->comp_type[bx4], t->a->ref[0][bx4],
@@ -1790,7 +1790,7 @@ static int decode_b(Dav1dTaskContext *const t,
                     b->comp_type = COMP_INTER_SEG;
                 }
                 b->mask_sign = dav1d_msac_decode_bool_equi(&ts->msac);
-                if (DEBUG_BLOCK_INFO)
+                if (DEBUG_B_DETAILS)
                     printf("Post-seg/wedge[%d,wedge_idx=%d,sign=%d]: r=%d\n",
                            b->comp_type == COMP_INTER_WEDGE,
                            b->wedge_idx, b->mask_sign, ts->msac.rng);
@@ -1838,7 +1838,7 @@ static int decode_b(Dav1dTaskContext *const t,
                                         ts->cdf.m.ref[3][ctx3]);
                     }
                 }
-                if (DEBUG_BLOCK_INFO)
+                if (DEBUG_B_DETAILS)
                     printf("Post-ref[%d]: r=%d\n", b->ref[0], ts->msac.rng);
             }
             b->ref[1] = -1;
@@ -1891,7 +1891,7 @@ static int decode_b(Dav1dTaskContext *const t,
                         fix_mv_precision(f->frame_hdr, &b->mv[0]);
                 }
 
-                if (DEBUG_BLOCK_INFO)
+                if (DEBUG_B_DETAILS)
                     printf("Post-intermode[%d,drl=%d,mv=y:%d,x:%d,n_mvs=%d]: r=%d\n",
                            b->inter_mode, b->drl_idx, b->mv[0].y, b->mv[0].x, n_mvs,
                            ts->msac.rng);
@@ -1917,12 +1917,12 @@ static int decode_b(Dav1dTaskContext *const t,
                     b->mv[0] = mvstack[0].mv.mv[0];
                     fix_mv_precision(f->frame_hdr, &b->mv[0]);
                 }
-                if (DEBUG_BLOCK_INFO)
+                if (DEBUG_B_DETAILS)
                     printf("Post-intermode[%d,drl=%d]: r=%d\n",
                            b->inter_mode, b->drl_idx, ts->msac.rng);
                 read_mv_residual(t, &b->mv[0], &ts->cdf.mv,
                                  !f->frame_hdr->force_integer_mv);
-                if (DEBUG_BLOCK_INFO)
+                if (DEBUG_B_DETAILS)
                     printf("Post-residualmv[mv=y:%d,x:%d]: r=%d\n",
                            b->mv[0].y, b->mv[0].x, ts->msac.rng);
             }
@@ -1947,7 +1947,7 @@ static int decode_b(Dav1dTaskContext *const t,
             } else {
                 b->interintra_type = INTER_INTRA_NONE;
             }
-            if (DEBUG_BLOCK_INFO && f->seq_hdr->inter_intra &&
+            if (DEBUG_B_DETAILS && f->seq_hdr->inter_intra &&
                 interintra_allowed_mask & (1 << bs))
             {
                 printf("Post-interintra[t=%d,m=%d,w=%d]: r=%d\n",
@@ -1982,7 +1982,7 @@ static int decode_b(Dav1dTaskContext *const t,
                     has_subpel_filter = 0;
                     derive_warpmv(t, bw4, bh4, mask, b->mv[0], &t->warpmv);
 #define signabs(v) v < 0 ? '-' : ' ', abs(v)
-                    if (DEBUG_BLOCK_INFO)
+                    if (DEBUG_B_DETAILS)
                         printf("[ %c%x %c%x %c%x\n  %c%x %c%x %c%x ]\n"
                                "alpha=%c%x, beta=%c%x, gamma=%c%x, delta=%c%x, "
                                "mv=y:%d,x:%d\n",
@@ -2010,7 +2010,7 @@ static int decode_b(Dav1dTaskContext *const t,
                     }
                 }
 
-                if (DEBUG_BLOCK_INFO)
+                if (DEBUG_B_DETAILS)
                     printf("Post-motionmode[%d]: r=%d [mask: 0x%" PRIx64 "/0x%"
                            PRIx64 "]\n", b->motion_mode, ts->msac.rng, mask[0],
                             mask[1]);
@@ -2032,18 +2032,18 @@ static int decode_b(Dav1dTaskContext *const t,
                 if (f->seq_hdr->dual_filter) {
                     const int ctx2 = get_filter_ctx(t->a, &t->l, comp, 1,
                                                     b->ref[0], by4, bx4);
-                    if (DEBUG_BLOCK_INFO)
+                    if (DEBUG_B_DETAILS)
                         printf("Post-subpel_filter1[%d,ctx=%d]: r=%d\n",
                                filter[0], ctx1, ts->msac.rng);
                     filter[1] = dav1d_msac_decode_symbol_adapt4(&ts->msac,
                                     ts->cdf.m.filter[1][ctx2],
                                     DAV1D_N_SWITCHABLE_FILTERS - 1);
-                    if (DEBUG_BLOCK_INFO)
+                    if (DEBUG_B_DETAILS)
                         printf("Post-subpel_filter2[%d,ctx=%d]: r=%d\n",
                                filter[1], ctx2, ts->msac.rng);
                 } else {
                     filter[1] = filter[0];
-                    if (DEBUG_BLOCK_INFO)
+                    if (DEBUG_B_DETAILS)
                         printf("Post-subpel_filter[%d,ctx=%d]: r=%d\n",
                                filter[0], ctx1, ts->msac.rng);
                 }
@@ -2741,7 +2741,7 @@ static void read_restoration_info(Dav1dTaskContext *const t,
                 ts->lr_ref[p]->filter_h[2] + 17, 64, 3) - 17;
         memcpy(lr->sgr_weights, ts->lr_ref[p]->sgr_weights, sizeof(lr->sgr_weights));
         ts->lr_ref[p] = lr;
-        if (DEBUG_BLOCK_INFO)
+        if (DEBUG_B_DETAILS)
             printf("Post-lr_wiener[pl=%d,v[%d,%d,%d],h[%d,%d,%d]]: r=%d\n",
                    p, lr->filter_v[0], lr->filter_v[1],
                    lr->filter_v[2], lr->filter_h[0],
@@ -2757,7 +2757,7 @@ static void read_restoration_info(Dav1dTaskContext *const t,
         memcpy(lr->filter_v, ts->lr_ref[p]->filter_v, sizeof(lr->filter_v));
         memcpy(lr->filter_h, ts->lr_ref[p]->filter_h, sizeof(lr->filter_h));
         ts->lr_ref[p] = lr;
-        if (DEBUG_BLOCK_INFO)
+        if (DEBUG_B_DETAILS)
             printf("Post-lr_sgrproj[pl=%d,idx=%d,w[%d,%d]]: r=%d\n",
                    p, lr->sgr_idx, lr->sgr_weights[0],
                    lr->sgr_weights[1], ts->msac.rng);
