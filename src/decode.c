@@ -3718,7 +3718,8 @@ int dav1d_submit_frame(Dav1dContext *const c) {
     const int uses_2pass = c->n_fc > 1;
     const int cols = f->frame_hdr->tiling.cols;
     const int rows = f->frame_hdr->tiling.rows;
-    f->task_thread.task_counter = (cols * rows + f->sbh) << uses_2pass;
+    f->task_thread.task_counter = c->hw_decoding ? 1 :
+                                  (cols * rows + f->sbh) << uses_2pass;
 
     // ref_mvs
     if (IS_INTER_OR_SWITCH(f->frame_hdr) || f->frame_hdr->allow_intrabc) {

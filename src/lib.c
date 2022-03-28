@@ -139,6 +139,9 @@ COLD int dav1d_open(Dav1dContext **const c_out, const Dav1dSettings *const s) {
                           s->n_threads <= DAV1D_MAX_THREADS, DAV1D_ERR(EINVAL));
     validate_input_or_ret(s->max_frame_delay >= 0 &&
                           s->max_frame_delay <= DAV1D_MAX_FRAME_DELAY, DAV1D_ERR(EINVAL));
+    validate_input_or_ret(s->external_decoder == NULL ||
+                          s->max_frame_delay == 1 || s->max_frame_delay == 0,
+                          DAV1D_ERR(EINVAL));
     validate_input_or_ret(s->allocator.alloc_picture_callback != NULL,
                           DAV1D_ERR(EINVAL));
     validate_input_or_ret(s->allocator.release_picture_callback != NULL,
