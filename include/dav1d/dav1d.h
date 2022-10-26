@@ -68,6 +68,70 @@ enum Dav1dInloopFilterType {
                              DAV1D_INLOOPFILTER_RESTORATION,
 };
 
+typedef struct Dav1dTileGroup {
+
+    /**
+    * Bitstream data representing the tiles in this group.
+    */
+    Dav1dData data;
+
+    /**
+    * Start and end tile indexes represented by this tile group.
+    */
+    int start, end;
+} Dav1dTileGroup;
+
+typedef struct Dav1dExternalDecoder {
+    void *cookie; ///< Custom data to pass to the callback.
+
+    /**
+    * Callback to check whether external decoding is possible given the current
+    *  sequence header.  When successful, external decoding will be used.
+    *  on failure the decoder will use software decoding.
+    *
+    * @param  cookie Custom pointer passed to all Dav1dExternalDecoder callbacks.
+    * @param seq_hdr The sequence header for the new stream which will be decoded.
+    *
+    * @return 0 on success, or < 0 (a negative DAV1D_ERR code) on error.
+    *         returning DAV1D_ERR(EAGAIN) will continue decoding using software,
+    *         all other errors wil fail decode.
+    */
+    int (*new_sequence_header)(void *cookie, const Dav1dSequenceHeader *seq_hdr);
+
+    /**
+    * Callback to let the external decoder allocate its buffers for a frame.
+    *
+    * @param     cookie Custom pointer passed to all Dav1dExternalDecoder callbacks.
+    * @param        img Picture being decoded into.
+    * @param    seq_hdr Sequence header for the stream which being decoded.
+    * @param  frame_hdr Header of the frame being decoded.
+    * @param frame_refs List of frames being used as reference. Only frames with
+    *                   data[0] set are considered valid.
+    *
+    * @return 0 on success, or < 0 (a negative DAV1D_ERR code) on error.
+    */
+    int (*setup_frame)(void *cookie, const Dav1dPicture *img,
+                       const Dav1dSequenceHeader *seq_hdr,
+                       const Dav1dFrameHeader *frame_hdr,
+                       const Dav1dPicture *frame_refs[DAV1D_REFS_PER_FRAME]);
+
+    /**
+    * Callback to let the external decoder do the frame decoding with the given
+    * tiles.
+    *
+    * @param     cookie Custom pointer passed to all Dav1dExternalDecoder callbacks.
+    * @param        img Picture being decoded into.
+    * @param  frame_hdr Header of the frame being decoded.
+    * @param      tiles Array of tiles to decode.
+    * @param  num_tiles Number of tiles in the tiles array.
+    *
+    * @return 0 on success, or < 0 (a negative DAV1D_ERR code) on error.
+    */
+    int (*decode_frame)(void *cookie, const Dav1dPicture *img,
+                        const Dav1dFrameHeader *frame_hdr,
+                        const struct Dav1dTileGroup tiles[], size_t num_tiles);
+} Dav1dExternalDecoder;
+
 typedef struct Dav1dSettings {
     int n_threads; ///< number of threads (0 = number of logical cores in host system, default 0)
     int max_frame_delay; ///< Set to 1 for low-latency decoding (0 = ceil(sqrt(n_threads)), default 0)
@@ -86,7 +150,9 @@ typedef struct Dav1dSettings {
                                  ///< once when shown, default 0)
     enum Dav1dInloopFilterType inloop_filters; ///< postfilters to enable during decoding (default
                                                ///< DAV1D_INLOOPFILTER_ALL)
-    uint8_t reserved[20]; ///< reserved for future use
+    const Dav1dExternalDecoder *external_decoder; ///< user callbacks to bypass decoding and do it
+                                                  ///< externally
+    uint8_t reserved[20-sizeof(void*)]; ///< reserved for future use
 } Dav1dSettings;
 
 /**

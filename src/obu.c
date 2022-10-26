@@ -1265,6 +1265,11 @@ int dav1d_parse_obus(Dav1dContext *const c, Dav1dData *const in, const int globa
         // previous state. Free that state.
 
         if (!c->seq_hdr) {
+            if (c->hw_new_sequence_header) {
+                // decide the first Hardware decoding mode
+                int hw_check = c->hw_new_sequence_header(c->hw_cookie, seq_hdr);
+                c->hw_decoding = hw_check == 0;
+            }
             c->frame_hdr = NULL;
             c->frame_flags |= PICTURE_FLAG_NEW_SEQUENCE;
         // see 7.5, operating_parameter_info is allowed to change in
@@ -1281,6 +1286,10 @@ int dav1d_parse_obus(Dav1dContext *const c, Dav1dData *const in, const int globa
                 dav1d_ref_dec(&c->refs[i].segmap);
                 dav1d_ref_dec(&c->refs[i].refmvs);
                 dav1d_cdf_thread_unref(&c->cdf[i]);
+            }
+            if (c->hw_new_sequence_header) {
+                int hw_check = c->hw_new_sequence_header(c->hw_cookie, seq_hdr);
+                c->hw_decoding = hw_check == 0;
             }
             c->frame_flags |= PICTURE_FLAG_NEW_SEQUENCE;
         // If operating_parameter_info changed, signal it

@@ -77,6 +77,7 @@ COLD void dav1d_default_settings(Dav1dSettings *const s) {
     s->strict_std_compliance = 0;
     s->output_invisible_frames = 0;
     s->inloop_filters = DAV1D_INLOOPFILTER_ALL;
+    s->external_decoder = NULL;
 }
 
 static void close_internal(Dav1dContext **const c_out, int flush);
@@ -138,6 +139,9 @@ COLD int dav1d_open(Dav1dContext **const c_out, const Dav1dSettings *const s) {
                           s->n_threads <= DAV1D_MAX_THREADS, DAV1D_ERR(EINVAL));
     validate_input_or_ret(s->max_frame_delay >= 0 &&
                           s->max_frame_delay <= DAV1D_MAX_FRAME_DELAY, DAV1D_ERR(EINVAL));
+    validate_input_or_ret(s->external_decoder == NULL ||
+                          s->max_frame_delay == 1 || s->max_frame_delay == 0,
+                          DAV1D_ERR(EINVAL));
     validate_input_or_ret(s->allocator.alloc_picture_callback != NULL,
                           DAV1D_ERR(EINVAL));
     validate_input_or_ret(s->allocator.release_picture_callback != NULL,
@@ -164,6 +168,12 @@ COLD int dav1d_open(Dav1dContext **const c_out, const Dav1dSettings *const s) {
     c->strict_std_compliance = s->strict_std_compliance;
     c->output_invisible_frames = s->output_invisible_frames;
     c->inloop_filters = s->inloop_filters;
+    if (s->external_decoder) {
+        c->hw_cookie              = s->external_decoder->cookie;
+        c->hw_new_sequence_header = s->external_decoder->new_sequence_header;
+        c->hw_setup_frame         = s->external_decoder->setup_frame;
+        c->hw_decode_frame        = s->external_decoder->decode_frame;
+    }
 
     dav1d_data_props_set_defaults(&c->cached_error_props);
 

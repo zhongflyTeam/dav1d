@@ -3376,6 +3376,11 @@ int dav1d_decode_frame_main(Dav1dFrameContext *const f) {
 
     assert(f->c->n_tc == 1);
 
+    if (f->c->hw_decoding) {
+        return f->c->hw_decode_frame(f->c->hw_cookie, &f->cur, f->frame_hdr,
+                                     f->tile, f->n_tile_data);
+    }
+
     Dav1dTaskContext *const t = &c->tc[f - c->fc];
     t->f = f;
     t->frame_thread.pass = 0;
@@ -3701,6 +3706,15 @@ int dav1d_submit_frame(Dav1dContext *const c) {
         f->resize_start[1] = get_upscale_x0(in_cw, out_cw, f->resize_step[1]);
     }
 
+    if (c->hw_decoding) {
+        const Dav1dPicture *frame_refs[8];
+        for (size_t i = 0; i < 8; i++)
+            frame_refs[i] = &c->refs[i].p.p;
+        res = c->hw_setup_frame(c->hw_cookie, &f->cur, f->seq_hdr,
+                                f->frame_hdr, frame_refs);
+        if (res < 0) goto error;
+    }
+
     // move f->cur into output queue
     if (c->n_fc == 1) {
         if (f->frame_hdr->show_frame || c->output_invisible_frames) {
@@ -3726,7 +3740,8 @@ int dav1d_submit_frame(Dav1dContext *const c) {
     const int uses_2pass = c->n_fc > 1;
     const int cols = f->frame_hdr->tiling.cols;
     const int rows = f->frame_hdr->tiling.rows;
-    f->task_thread.task_counter = (cols * rows + f->sbh) << uses_2pass;
+    f->task_thread.task_counter = c->hw_decoding ? 1 :
+                                  (cols * rows + f->sbh) << uses_2pass;
 
     // ref_mvs
     if (IS_INTER_OR_SWITCH(f->frame_hdr) || f->frame_hdr->allow_intrabc) {

@@ -68,11 +68,6 @@ typedef struct Dav1dDSPContext {
     Dav1dLoopRestorationDSPContext lr;
 } Dav1dDSPContext;
 
-struct Dav1dTileGroup {
-    Dav1dData data;
-    int start, end;
-};
-
 enum TaskType {
     DAV1D_TASK_TYPE_INIT,
     DAV1D_TASK_TYPE_INIT_CDF,
@@ -82,6 +77,7 @@ enum TaskType {
     DAV1D_TASK_TYPE_DEBLOCK_COLS,
     DAV1D_TASK_TYPE_DEBLOCK_ROWS,
     DAV1D_TASK_TYPE_CDEF,
+    DAV1D_TASK_TYPE_HW_DECODE,
     DAV1D_TASK_TYPE_SUPER_RESOLUTION,
     DAV1D_TASK_TYPE_LOOP_RESTORATION,
     DAV1D_TASK_TYPE_RECONSTRUCTION_PROGRESS,
@@ -203,6 +199,17 @@ struct Dav1dContext {
     Dav1dLogger logger;
 
     Dav1dMemPool *picture_pool;
+
+    int hw_decoding;
+    void *hw_cookie;
+    int (*hw_new_sequence_header)(void *cookie, const Dav1dSequenceHeader *seq_hdr);
+    int (*hw_setup_frame)(void *cookie, const Dav1dPicture *img,
+                             const Dav1dSequenceHeader *seq_hdr,
+                             const Dav1dFrameHeader *frame_hdr,
+                             const Dav1dPicture *all_frames[DAV1D_REFS_PER_FRAME]);
+    int (*hw_decode_frame)(void *cookie, const Dav1dPicture *img,
+                           const Dav1dFrameHeader *frame_hdr,
+                           const struct Dav1dTileGroup tiles[], size_t n_tile_data);
 };
 
 struct Dav1dTask {

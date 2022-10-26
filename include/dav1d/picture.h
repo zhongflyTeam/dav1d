@@ -56,6 +56,9 @@ typedef struct Dav1dPicture {
      * containing 10 bpc image data, the pixels should be located in the LSB
      * bits, so that values range between [0, 1023]; the upper bits should be
      * zero'ed out.
+     *
+     * With external decoding data contains custom pointers set during buffer
+     * allocation. data[0] MUST NOT be NULL.
      */
     void *data[3];
 

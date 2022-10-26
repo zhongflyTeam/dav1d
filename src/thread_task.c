@@ -218,6 +218,7 @@ static int create_filter_sbrow(Dav1dFrameContext *const f,
     t->recon_progress = 1;
     t->deblock_progress = 0;
     t->type = pass == 1 ? DAV1D_TASK_TYPE_ENTROPY_PROGRESS :
+              f->c->hw_decoding ? DAV1D_TASK_TYPE_HW_DECODE :
               has_deblock ? DAV1D_TASK_TYPE_DEBLOCK_COLS :
               has_cdef || has_lr /* i.e. LR backup */ ? DAV1D_TASK_TYPE_DEBLOCK_ROWS :
               has_resize ? DAV1D_TASK_TYPE_SUPER_RESOLUTION :
@@ -233,7 +234,7 @@ int dav1d_task_create_tile_sbrow(Dav1dFrameContext *const f, const int pass,
 {
     Dav1dTask *tasks = f->task_thread.tile_tasks[0];
     const int uses_2pass = f->c->n_fc > 1;
-    const int num_tasks = f->frame_hdr->tiling.cols * f->frame_hdr->tiling.rows;
+    const int num_tasks = f->c->hw_decoding ? 1 : f->frame_hdr->tiling.cols * f->frame_hdr->tiling.rows;
     int alloc_num_tasks = num_tasks * (1 + uses_2pass);
     if (alloc_num_tasks > f->task_thread.num_tile_tasks) {
         const size_t size = sizeof(Dav1dTask) * alloc_num_tasks;
@@ -246,8 +247,8 @@ int dav1d_task_create_tile_sbrow(Dav1dFrameContext *const f, const int pass,
     f->task_thread.tile_tasks[1] = tasks + num_tasks;
     tasks += num_tasks * (pass & 1);
 
-    Dav1dTask *pf_t;
-    if (create_filter_sbrow(f, pass, &pf_t))
+    Dav1dTask *pf_t = NULL;
+    if (!f->c->hw_decoding && create_filter_sbrow(f, pass, &pf_t))
         return -1;
 
     Dav1dTask *prev_t = NULL;
@@ -263,14 +264,17 @@ int dav1d_task_create_tile_sbrow(Dav1dFrameContext *const f, const int pass,
         t->recon_progress = 0;
         t->deblock_progress = 0;
         t->deps_skip = 0;
-        t->type = pass != 1 ? DAV1D_TASK_TYPE_TILE_RECONSTRUCTION :
-                              DAV1D_TASK_TYPE_TILE_ENTROPY;
+        if (f->c->hw_decoding)
+            t->type = DAV1D_TASK_TYPE_HW_DECODE;
+        else
+            t->type = pass != 1 ? DAV1D_TASK_TYPE_TILE_RECONSTRUCTION :
+                                DAV1D_TASK_TYPE_TILE_ENTROPY;
         t->frame_idx = (int)(f - f->c->fc);
         if (prev_t) prev_t->next = t;
         prev_t = t;
     }
     if (pf_t) {
-        prev_t->next = pf_t;
+        if (prev_t) prev_t->next = pf_t;
         prev_t = pf_t;
     }
     insert_tasks(f, &tasks[0], prev_t, cond_signal);
@@ -561,6 +565,8 @@ void *dav1d_worker_task(void *data) {
                     const int p1 = atomic_load(&prog[(t->sby - 1) >> 5]);
                     if (p1 & (1U << ((t->sby - 1) & 31)))
                         goto found;
+                } else if (t->type == DAV1D_TASK_TYPE_HW_DECODE) {
+                    goto found;
                 } else {
                     assert(t->deblock_progress);
                     const int p1 = atomic_load(&f->frame_thread.deblock_progress);
@@ -616,7 +622,8 @@ void *dav1d_worker_task(void *data) {
                 pthread_mutex_lock(&ttd->lock);
                 abort_frame(f, res ? res : DAV1D_ERR(EINVAL));
             } else if (!res) {
-                t->type = DAV1D_TASK_TYPE_INIT_CDF;
+                t->type = c->hw_decoding ?
+                    DAV1D_TASK_TYPE_HW_DECODE : DAV1D_TASK_TYPE_INIT_CDF;
                 if (p1) goto found_unlocked;
                 pthread_mutex_lock(&ttd->lock);
                 insert_task(f, t, 0);
@@ -780,6 +787,17 @@ void *dav1d_worker_task(void *data) {
         case DAV1D_TASK_TYPE_ENTROPY_PROGRESS:
             // dummy to convert tile progress to frame
             break;
+        case DAV1D_TASK_TYPE_HW_DECODE: {
+            int res = f->c->hw_decode_frame(f->c->hw_cookie, &f->cur, f->frame_hdr,
+                                            f->tile, f->n_tile_data);
+            if (res) {
+                abort_frame(f, res);
+                reset_task_cur(c, ttd, t->frame_idx);
+                continue;
+            }
+            sby = f->sbh - 1; // force task_thread.done
+            break;
+        }
         default: abort();
         }
         // if task completed [typically LR], signal picture progress as per below
@@ -789,11 +807,11 @@ void *dav1d_worker_task(void *data) {
         const enum PlaneType progress_plane_type =
             t->type == DAV1D_TASK_TYPE_ENTROPY_PROGRESS ? PLANE_TYPE_BLOCK :
             c->n_fc > 1 ? PLANE_TYPE_Y : PLANE_TYPE_ALL;
-        if (t->type != DAV1D_TASK_TYPE_ENTROPY_PROGRESS)
+        if (t->type != DAV1D_TASK_TYPE_ENTROPY_PROGRESS && t->type != DAV1D_TASK_TYPE_HW_DECODE)
             atomic_fetch_or(&f->frame_thread.frame_progress[sby >> 5],
                             1U << (sby & 31));
         pthread_mutex_lock(&ttd->lock);
-        if (t->type != DAV1D_TASK_TYPE_ENTROPY_PROGRESS) {
+        if (t->type != DAV1D_TASK_TYPE_ENTROPY_PROGRESS && t->type != DAV1D_TASK_TYPE_HW_DECODE) {
             unsigned frame_prog = c->n_fc > 1 ? atomic_load(&f->sr_cur.progress[1]) : 0;
             if (frame_prog < FRAME_ERROR) {
                 int idx = frame_prog >> (f->sb_shift + 7);
