@@ -28,6 +28,9 @@
 
 %if ARCH_X86_64
 
+%define CDEF_BUFFER_UNITS 8
+%define CDEF_BUFFER_Y_STRIDE (CDEF_BUFFER_UNITS * 8 + 8 * 2)
+
 %macro JMP_TABLE 2-*
  %xdefine %1_jmptable %%table
  %xdefine %%base mangle(private_prefix %+ _%1_avx2)
@@ -46,108 +49,142 @@ JMP_TABLE cdef_filter_%1_8bpc, \
     d0k0, d0k1, d1k0, d1k1
 %endmacro
 
+%macro CDEF_PREP_JMP_TABLE 1
+JMP_TABLE cdef_prep_%1_8bpc, \
+    no_left_right, no_right,           no_left, full, \
+    no_left_right, no_right,           no_left, full, \
+    no_left_right, no_right,           no_left, full, \
+    no_left_right, no_right,           no_left, full, \
+    no_left_right, left_skip_no_right, no_left, left_skip_full, \
+    no_left_right, left_skip_no_right, no_left, left_skip_full, \
+    no_left_right, left_skip_no_right, no_left, left_skip_full, \
+    no_left_right, left_skip_no_right, no_left, left_skip_full
+%endmacro
+
 SECTION_RODATA 32
 
 pd_47130256:   dd  4,  7,  1,  3,  0,  2,  5,  6
-blend_4x4:     dd 0x00, 0x80, 0x00, 0x00, 0x80, 0x80, 0x00, 0x00
-               dd 0x80, 0x00, 0x00
-blend_4x8_0:   dd 0x00, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80
-blend_4x8_1:   dd 0x00, 0x00, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80
-               dd 0x00, 0x00
-blend_4x8_2:   dd 0x0000, 0x8080, 0x8080, 0x8080, 0x8080, 0x8080, 0x8080, 0x8080
-               dd 0x0000
-blend_4x8_3:   dd 0x0000, 0x0000, 0x8080, 0x8080, 0x8080, 0x8080, 0x8080, 0x8080
-               dd 0x0000, 0x0000
-blend_8x8_0:   dq 0x00, 0x00, 0x80, 0x80, 0x80, 0x80
-blend_8x8_1:   dq 0x0000, 0x0000, 0x8080, 0x8080, 0x8080, 0x8080, 0x0000, 0x0000
 div_table:     dd 840, 420, 280, 210, 168, 140, 120, 105, 420, 210, 140, 105
 shufw_6543210x:db 12, 13, 10, 11,  8,  9,  6,  7,  4,  5,  2,  3,  0,  1, 14, 15
 shufb_lohi:    db  0,  8,  1,  9,  2, 10,  3, 11,  4, 12,  5, 13,  6, 14,  7, 15
+pb_deinterleave:
+               db 0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15
+pb_128:        times 4 db 128
 pw_128:        times 2 dw 128
 pw_2048:       times 2 dw 2048
-tap_table:     ; masks for 8 bit shifts
-               db 0xFF, 0x7F, 0x3F, 0x1F, 0x0F, 0x07, 0x03, 0x01
-               ; weights
-               db  4,  2,  3,  3,  2,  1
-               db -1 * 16 + 1, -2 * 16 + 2
-               db  0 * 16 + 1, -1 * 16 + 2
-               db  0 * 16 + 1,  0 * 16 + 2
-               db  0 * 16 + 1,  1 * 16 + 2
-               db  1 * 16 + 1,  2 * 16 + 2
-               db  1 * 16 + 0,  2 * 16 + 1
-               db  1 * 16 + 0,  2 * 16 + 0
-               db  1 * 16 + 0,  2 * 16 - 1
-               ; the last 6 are repeats of the first 6 so we don't need to & 7
-               db -1 * 16 + 1, -2 * 16 + 2
-               db  0 * 16 + 1, -1 * 16 + 2
-               db  0 * 16 + 1,  0 * 16 + 2
-               db  0 * 16 + 1,  1 * 16 + 2
-               db  1 * 16 + 1,  2 * 16 + 2
-               db  1 * 16 + 0,  2 * 16 + 1
 
-CDEF_FILTER_JMP_TABLE 4x4
-CDEF_FILTER_JMP_TABLE 4x8
-CDEF_FILTER_JMP_TABLE 8x8
+tap_table:
+; masks for 8 bit shifts
+table_shift_masks:
+               dd 0xFFFFFFFF, 0x7F7F7F7F, 0x3F3F3F3F, 0x1F1F1F1F,
+               dd 0x0F0F0F0F, 0x07070707, 0x03030303, 0x01010101
+; weights
+tap_weights:   db  4,  2,  2,  1,  3,  3,  2,  1
+tap_table_y:   db -1 * 32 + 1, -2 * 32 + 2
+               db  0 * 32 + 1, -1 * 32 + 2
+               db  0 * 32 + 1,  0 * 32 + 2
+               db  0 * 32 + 1,  1 * 32 + 2
+               db  1 * 32 + 1,  2 * 32 + 2
+               db  1 * 32 + 0,  2 * 32 + 1
+               db  1 * 32 + 0,  2 * 32 + 0
+               db  1 * 32 + 0,  2 * 32 - 1
+               ; the last 6 are repeats of the first 6 so we don't need to & 7
+               db -1 * 32 + 1, -2 * 32 + 2
+               db  0 * 32 + 1, -1 * 32 + 2
+               db  0 * 32 + 1,  0 * 32 + 2
+               db  0 * 32 + 1,  1 * 32 + 2
+               db  1 * 32 + 1,  2 * 32 + 2
+               db  1 * 32 + 0,  2 * 32 + 1
+tap_table_uv:  db -1 * 32 + 2, -2 * 32 + 4
+               db  0 * 32 + 2, -1 * 32 + 4
+               db  0 * 32 + 2,  0 * 32 + 4
+               db  0 * 32 + 2,  1 * 32 + 4
+               db  1 * 32 + 2,  2 * 32 + 4
+               db  1 * 32 + 0,  2 * 32 + 2
+               db  1 * 32 + 0,  2 * 32 + 0
+               db  1 * 32 + 0,  2 * 32 - 2
+               ; the last 6 are repeats of the first 6 so we don't need to & 7
+               db -1 * 32 + 2, -2 * 32 + 4
+               db  0 * 32 + 2, -1 * 32 + 4
+               db  0 * 32 + 2,  0 * 32 + 4
+               db  0 * 32 + 2,  1 * 32 + 4
+               db  1 * 32 + 2,  2 * 32 + 4
+               db  1 * 32 + 0,  2 * 32 + 2
+
+CDEF_FILTER_JMP_TABLE uv_8x8
+CDEF_FILTER_JMP_TABLE uv_4x4
+; Share 420 and 422 table
+%define cdef_filter_uv_4x8_8bpc_jmptable cdef_filter_uv_4x4_8bpc_jmptable
+CDEF_FILTER_JMP_TABLE y
+
+CDEF_PREP_JMP_TABLE uv_444
+CDEF_PREP_JMP_TABLE uv_420
+; Share 420 and 422 table
+%define cdef_prep_uv_422_8bpc_jmptable cdef_prep_uv_420_8bpc_jmptable
+CDEF_PREP_JMP_TABLE y
 
 SECTION .text
 
-%macro PREP_REGS 2 ; w, h
+; IMPLEMENTATION SPECIFIC DETAILS:
+;   cdef_filter and cdef_prep allow customization of how the intermediary
+; buffer is stored. For avx2, all pixel data is subtracted by 128 (XOR 128),
+; and chroma pixels are interleaved.
+
+%macro PREP_REGS 3 ; w, h, uv
     ; off1/2/3[k] [6 total] from [tapq+12+(dir+0/2/6)*2+k]
-    mov           dird, r7m
-    lea         tableq, [cdef_filter_%1x%2_8bpc_jmptable]
-    lea           dirq, [tableq+dirq*2*4]
+    mov           dird, r6m  ; load or zero extend register
+%if %3 == 1
+    lea         tableq, [cdef_filter_uv_%1x%2_8bpc_jmptable]
+%else
+    lea         tableq, [cdef_filter_y_8bpc_jmptable]
+%endif
+    lea           dirq, [tableq+ dirq*2*4]
 %if %1 == 4
+  %define vloop_lines 4
  %if %2 == 4
-  DEFINE_ARGS dst, stride, left, top, bot, pri, sec, \
-              table, dir, dirjmp, stride3, k
+  DEFINE_ARGS dst1, stride, buf, k, tap, dst2, \
+              dir, table, dirjmp
  %else
-  DEFINE_ARGS dst, stride, left, top, bot, pri, sec, \
-              table, dir, dirjmp, dst4, stride3, k
-    lea          dst4q, [dstq+strideq*4]
+  DEFINE_ARGS dst1, stride, buf, k, tap, dst2, \
+              dir, table, dirjmp, stride3, h
+    mov             hd, 2
+    lea       stride3q, [strideq*3]
  %endif
 %else
-  DEFINE_ARGS dst, stride, h, top1, bot, pri, sec, \
-              table, dir, dirjmp, top2, stride3, k
-    mov             hq, -8
-    lea          top1q, [top1q+strideq*0]
-    lea          top2q, [top1q+strideq*1]
-%endif
-%if %1 == 4
+ %if %3 == 1
+  DEFINE_ARGS dst1, stride, buf, k, tap, dst2, \
+              dir, table, dirjmp, h
+    mov             hd, 4
+  %define vloop_lines 2
+ %else
+  DEFINE_ARGS dst, stride, buf, k, tap, h, \
+              dir, table, dirjmp, stride3
+    mov             hd, 2
     lea       stride3q, [strideq*3]
+   %define vloop_lines 4
+  %endif
+%endif
+%if %3 == 1
+    mov          dst2q, [dst1q+gprsize]
+    mov          dst1q, [dst1q]
 %endif
 %endmacro
 
-%macro LOAD_BLOCK 2-3 0 ; w, h, init_min_max
+%macro LOAD_BLOCK 3-4 0 ; w, h, uv, init_min_max
     mov             kd, 1
     pxor           m15, m15                     ; sum
-%if %2 == 8
     pxor           m12, m12
- %if %1 == 4
-    movd           xm4, [dstq +strideq*0]
-    movd           xm6, [dstq +strideq*1]
-    movd           xm5, [dstq +strideq*2]
-    movd           xm7, [dstq +stride3q ]
-    vinserti128     m4, [dst4q+strideq*0], 1
-    vinserti128     m6, [dst4q+strideq*1], 1
-    vinserti128     m5, [dst4q+strideq*2], 1
-    vinserti128     m7, [dst4q+stride3q ], 1
-    punpckldq       m4, m6
-    punpckldq       m5, m7
- %else
-    movq           xm4, [dstq+strideq*0]
-    movq           xm5, [dstq+strideq*1]
-    vinserti128     m4, [dstq+strideq*2], 1
-    vinserti128     m5, [dstq+stride3q ], 1
- %endif
-    punpcklqdq      m4, m5
+%if %1 == 8 && %2 == 8 && %3 == 1
+    movu           xm4, [bufq           ]
+    vinserti128     m4, [bufq+buf_stride], 1
 %else
-    movd           xm4, [dstq+strideq*0]
-    movd           xm5, [dstq+strideq*1]
-    vinserti128     m4, [dstq+strideq*2], 1
-    vinserti128     m5, [dstq+stride3q ], 1
-    punpckldq       m4, m5
+    movq           xm4, [bufq+buf_stride*0]
+    movq           xm5, [bufq+buf_stride*1]
+    vinserti128     m4, [bufq+buf_stride*2], 1
+    vinserti128     m5, [bufq+buf_stride*3], 1
+    punpcklqdq      m4, m5
 %endif
-%if %3 == 1
+%if %4 == 1
     mova            m7, m4                      ; min
     mova            m8, m4                      ; max
 %endif
@@ -161,94 +198,54 @@ SECTION .text
     call       dirjmpq
 
 %if %8 == 1
-    pmaxub          m7, m5
-    pminub          m8, m5
-    pmaxub          m7, m6
-    pminub          m8, m6
+    pmaxsb          m7, m5
+    pminsb          m8, m5
+    pmaxsb          m7, m6
+    pminsb          m8, m6
 %endif
 
     ; accumulate sum[m15] over p0/p1
-%if %7 == 4
-    punpcklbw       m5, m6
-    punpcklbw       m6, m4, m4
-    psubusb         m9, m5, m6
-    psubusb         m5, m6, m5
-    por             m9, m5     ; abs_diff_p01(p01 - px)
-    pcmpeqb         m5, m9
-    por             m5, %5
-    psignb          m6, %5, m5
-    psrlw           m5, m9, %2 ; emulate 8-bit shift
-    pand            m5, %3
-    psubusb         m5, %4, m5
-    pminub          m5, m9
-    pmaddubsw       m5, m6
-    paddw          m15, m5
-%else
-    psubusb         m9, m5, m4
-    psubusb         m5, m4, m5
-    psubusb        m11, m6, m4
-    psubusb         m6, m4, m6
-    por             m9, m5      ; abs_diff_p0(p0 - px)
-    por            m11, m6      ; abs_diff_p1(p1 - px)
-    pcmpeqb         m5, m9
-    pcmpeqb         m6, m11
-    punpckhbw      m10, m9, m11
-    punpcklbw       m9, m11
-    por             m5, %5
-    por            m11, m6, %5
-    punpckhbw       m6, m5, m11
-    punpcklbw       m5, m11
-    psignb         m11, %5, m6
-    psrlw           m6, m10, %2 ; emulate 8-bit shift
-    pand            m6, %3
-    psubusb         m6, %4, m6
-    pminub          m6, m10
-    pmaddubsw       m6, m11
+    psubsb          m5, m4
+    psubsb          m6, m4
+    pabsb           m9, m5
+    vpsrlvd        m10, m9, %2  ; emulate 8-bit shift
+    pand           m10, %3
+    psubusb        m10, %4, m10
+    pminub         m10, m9
+    psignb         m10, m5
+    pabsb           m9, m6
+    vpsrlvd        m11, m9, %2  ; emulate 8-bit shift
+    pand           m11, %3
+    psubusb        m11, %4, m11
+    pminub         m11, m9
+    psignb         m11, m6
+    punpckhbw      m6, m10, m11
+    punpcklbw      m10, m11
+    pmaddubsw      m6, %5, m6
+    pmaddubsw      m10, %5, m10
     paddw          m12, m6
-    psignb         m11, %5, m5
-    psrlw           m5, m9, %2  ; emulate 8-bit shift
-    pand            m5, %3
-    psubusb         m5, %4, m5
-    pminub          m5, m9
-    pmaddubsw       m5, m11
-    paddw          m15, m5
-%endif
+    paddw          m15, m10
 %endmacro
 
-%macro ADJUST_PIXEL 4-5 0 ; w, h, zero, pw_2048, clip
-%if %2 == 4
- %if %5 == 1
-    punpcklbw       m4, %3
- %endif
-    pcmpgtw         %3, m15
-    paddw          m15, %3
-    pmulhrsw       m15, %4
- %if %5 == 0
-    packsswb       m15, m15
-    paddb           m4, m15
- %else
-    paddw           m4, m15
-    packuswb        m4, m4 ; clip px in [0x0,0xff]
-    pminub          m4, m7
-    pmaxub          m4, m8
- %endif
-    vextracti128   xm5, m4, 1
-    movd   [dstq+strideq*0], xm4
-    movd   [dstq+strideq*2], xm5
-    pextrd [dstq+strideq*1], xm4, 1
-    pextrd [dstq+stride3q ], xm5, 1
-%else
-    pcmpgtw         m6, %3, m12
-    pcmpgtw         m5, %3, m15
+%macro ADJUST_PIXEL 7-8 0 ; w, h, uv, zero, pw_2048, pb_128,
+                          ; deinterleave (for uv), clip
+    pxor            m4, %6
+%if %8 == 1
+    pxor            m7, %6
+    pxor            m8, %6
+%endif
+%if %1 == 4
+    pcmpgtw         m6, %4, m12
+    pcmpgtw         m5, %4, m15
     paddw          m12, m6
     paddw          m15, m5
- %if %5 == 1
-    punpckhbw       m5, m4, %3
-    punpcklbw       m4, %3
+ %if %8 == 1
+    punpckhbw       m5, m4, %4
+    punpcklbw       m4, %4
  %endif
-    pmulhrsw       m12, %4
-    pmulhrsw       m15, %4
- %if %5 == 0
+    pmulhrsw       m12, %5
+    pmulhrsw       m15, %5
+ %if %8 == 0
     packsswb       m15, m12
     paddb           m4, m15
  %else
@@ -258,88 +255,112 @@ SECTION .text
     pminub          m4, m7
     pmaxub          m4, m8
  %endif
+ %if %2 == 4
+    lea             kq, [strideq*3]
+    %define stride3q kq
+ %endif
+    pshufb          m4, %7
     vextracti128   xm5, m4, 1
- %if %1 == 4
-    movd   [dstq +strideq*0], xm4
-    movd   [dst4q+strideq*0], xm5
-    pextrd [dstq +strideq*1], xm4, 1
-    pextrd [dst4q+strideq*1], xm5, 1
-    pextrd [dstq +strideq*2], xm4, 2
-    pextrd [dst4q+strideq*2], xm5, 2
-    pextrd [dstq +stride3q ], xm4, 3
-    pextrd [dst4q+stride3q ], xm5, 3
+    movd   [dst1q+strideq*0], xm4
+    movd   [dst1q+strideq*2], xm5
+    pextrd [dst1q+strideq*1], xm4, 1
+    pextrd [dst1q+stride3q ], xm5, 1
+    pextrd [dst2q+strideq*0], xm4, 2
+    pextrd [dst2q+strideq*2], xm5, 2
+    pextrd [dst2q+strideq*1], xm4, 3
+    pextrd [dst2q+stride3q ], xm5, 3
+ %if %2 == 4
+    %undef stride3q
+ %endif
+%else
+    pcmpgtw         m6, %4, m12
+    pcmpgtw         m5, %4, m15
+    paddw          m12, m6
+    paddw          m15, m5
+ %if %8 == 1
+    punpckhbw       m5, m4, %4
+    punpcklbw       m4, %4
+ %endif
+    pmulhrsw       m12, %5
+    pmulhrsw       m15, %5
+ %if %8 == 0
+    packsswb       m15, m12
+    paddb           m4, m15
  %else
+    paddw           m5, m12
+    paddw           m4, m15
+    packuswb        m4, m5 ; clip px in [0x0,0xff]
+    pminub          m4, m7
+    pmaxub          m4, m8
+ %endif
+ %if %3 == 1
+    pshufb          m4, %7
+    vextracti128   xm5, m4, 1
+    movq   [dst1q        ], xm4
+    movq   [dst1q+strideq], xm5
+    movhps [dst2q        ], xm4
+    movhps [dst2q+strideq], xm5
+ %else
+    vextracti128   xm5, m4, 1
     movq   [dstq+strideq*0], xm4
     movq   [dstq+strideq*2], xm5
     movhps [dstq+strideq*1], xm4
     movhps [dstq+stride3q ], xm5
- %endif
+  %endif
 %endif
 %endmacro
 
-%macro BORDER_PREP_REGS 2 ; w, h
+%macro BORDER_PREP_REGS 3 ; w, h, uv
     ; off1/2/3[k] [6 total] from [tapq+12+(dir+0/2/6)*2+k]
-    mov           dird, r7m
-    lea           dirq, [tableq+dirq*2+14]
-%if %1*%2*2/mmsize > 1
- %if %1 == 4
-    DEFINE_ARGS dst, stride, k, dir, stk, pri, sec, stride3, h, off
- %else
-    DEFINE_ARGS dst, stride, k, dir, stk, pri, sec, h, off
- %endif
-    mov             hd, %1*%2*2/mmsize
+    mov           dird, r6m
+%if %3 == 1
+    lea           dirq, [tableq+dirq*2+tap_table_uv-tap_table]
+    DEFINE_ARGS dst1, stride, k, h, tap, stk, dir, off, dst2
+    mov             hd, %1*%2*4/mmsize
+    mov          dst2q, [dst1q+gprsize]
+    mov          dst1q, [dst1q]
 %else
-    DEFINE_ARGS dst, stride, k, dir, stk, pri, sec, stride3, off
+    lea           dirq, [tableq+dirq*2+tap_table_y-tap_table]
+    DEFINE_ARGS dst, stride, k, h, tap, stk, dir, off
+    mov             hd, %1*%2*2/mmsize
 %endif
     lea           stkq, [px]
     pxor           m11, m11
 %endmacro
 
-%macro BORDER_LOAD_BLOCK 2-3 0 ; w, h, init_min_max
+%macro BORDER_LOAD_BLOCK 3-4 0 ; w, h, uv, init_min_max
     mov             kd, 1
-%if %1 == 4
-    movq           xm4, [stkq+32*0]
-    movhps         xm4, [stkq+32*1]
-    movq           xm5, [stkq+32*2]
-    movhps         xm5, [stkq+32*3]
-    vinserti128     m4, xm5, 1
+%if %1 == 8 && %3 == 1
+    mova            m4, [stkq]
 %else
-    mova           xm4, [stkq+32*0]             ; px
-    vinserti128     m4, [stkq+32*1], 1
+    mova           xm4, [stkq+64*0]             ; px
+    vinserti128     m4, [stkq+64*1], 1
 %endif
     pxor           m15, m15                     ; sum
-%if %3 == 1
+%if %4 == 1
     mova            m7, m4                      ; max
     mova            m8, m4                      ; min
 %endif
 %endmacro
 
-%macro ACCUMULATE_TAP_WORD 6-7 0 ; tap_offset, shift, mask, strength
-                                 ; mul_tap, w, clip
+%macro ACCUMULATE_TAP_WORD 8-9 0 ; tap_offset, shift, mask, strength
+                                 ; mul_tap, w, h, uv, clip
     ; load p0/p1
     movsx         offq, byte [dirq+kq+%1]       ; off1
-%if %6 == 4
-    movq           xm5, [stkq+offq*2+32*0]      ; p0
-    movq           xm6, [stkq+offq*2+32*2]
-    movhps         xm5, [stkq+offq*2+32*1]
-    movhps         xm6, [stkq+offq*2+32*3]
-    vinserti128     m5, xm6, 1
+%if %6 == 8 && %8 == 1
+    movu            m5, [stkq+offq*2]
 %else
-    movu           xm5, [stkq+offq*2+32*0]      ; p0
-    vinserti128     m5, [stkq+offq*2+32*1], 1
+    movu           xm5, [stkq+offq*2+64*0]
+    vinserti128     m5, [stkq+offq*2+64*1], 1
 %endif
     neg           offq                          ; -off1
-%if %6 == 4
-    movq           xm6, [stkq+offq*2+32*0]      ; p1
-    movq           xm9, [stkq+offq*2+32*2]
-    movhps         xm6, [stkq+offq*2+32*1]
-    movhps         xm9, [stkq+offq*2+32*3]
-    vinserti128     m6, xm9, 1
+%if %6 == 8 && %8 == 1
+    movu            m6, [stkq+offq*2]
 %else
-    movu           xm6, [stkq+offq*2+32*0]      ; p1
-    vinserti128     m6, [stkq+offq*2+32*1], 1
+    movu           xm6, [stkq+offq*2+64*0]      ; p1
+    vinserti128     m6, [stkq+offq*2+64*1], 1
 %endif
-%if %7 == 1
+%if %9 == 1
     ; out of bounds values are set to a value that is a both a large unsigned
     ; value and a negative signed value.
     ; use signed max and unsigned min to remove them
@@ -372,94 +393,75 @@ SECTION .text
     paddw          m15, m5
 %endmacro
 
-%macro BORDER_ADJUST_PIXEL 2-3 0 ; w, pw_2048, clip
+%macro BORDER_ADJUST_PIXEL 5-6 0 ; w, h, uv, pw_2048, deinterleave (for uv),
+                                 ; clip
     pcmpgtw         m9, m11, m15
     paddw          m15, m9
-    pmulhrsw       m15, %2
+    pmulhrsw       m15, %4
     paddw           m4, m15
-%if %3 == 1
+%if %6 == 1
     pminsw          m4, m7
     pmaxsw          m4, m8
 %endif
-    packuswb        m4, m4
     vextracti128   xm5, m4, 1
-%if %1 == 4
-    movd   [dstq+strideq*0], xm4
-    pextrd [dstq+strideq*1], xm4, 1
-    movd   [dstq+strideq*2], xm5
-    pextrd [dstq+stride3q ], xm5, 1
+    packuswb       xm4, xm5
+%if %3 == 1
+    pshufb         xm4, %5
+ %if %1 == 4
+    movd   [dst1q+strideq*0], xm4
+    pextrd [dst1q+strideq*1], xm4, 1
+    pextrd [dst2q+strideq*0], xm4, 2
+    pextrd [dst2q+strideq*1], xm4, 3
+ %elif %1 == 8
+    movq       [dst1q], xm4
+    movhps     [dst2q], xm4
+ %endif
 %else
-    movq [dstq+strideq*0], xm4
-    movq [dstq+strideq*1], xm5
+    movq   [dstq+strideq*0], xm4
+    movhps [dstq+strideq*1], xm4
 %endif
 %endmacro
 
-%macro CDEF_FILTER 2 ; w, h
+%macro CDEF_FILTER 3 ; w, h, uv
 INIT_YMM avx2
-cglobal cdef_filter_%1x%2_8bpc, 5, 10, 0, dst, stride, left, top, bot, \
-                                          pri, sec, dir, damping, edge
+%if %3 == 1
+cglobal cdef_filter_uv_%1x%2_8bpc, 6, 10, 0, dst, stride, buf, cbx, pri, \
+                                             sec, dir, damping, edge
+%define buf_stride (CDEF_BUFFER_Y_STRIDE * 2 * %1 / 8)
+%if %1 == 8
+    add           cbxq, cbxq ; double since cbxq*8 is invalid address offset
+%endif
+    lea           bufq, [bufq+cbxq*8+buf_stride*2+8]
+%else
+cglobal cdef_filter_y_8bpc, 6, 9, 0, dst, stride, buf, cbx, pri, sec, dir, \
+                                     damping, edge
+%define buf_stride CDEF_BUFFER_Y_STRIDE
+    lea           bufq, [bufq+cbxq*%1+buf_stride*2+8]
+%endif
 %assign stack_offset_entry stack_offset
+%assign regs_used_entry regs_used
     mov          edged, edgem
     cmp          edged, 0xf
     jne .border_block
 
+%if %3 != 1   ; !uv
+    PUSH           r9
+ %assign regs_used 10
+%elif %1 == 4 && %2 == 8 ; uv && w == 4 && h == 8
     PUSH           r10
-    PUSH           r11
-%if %2 == 4
- %assign regs_used 12
- %if STACK_ALIGNMENT < 32
-    PUSH  r%+regs_used
-  %assign regs_used regs_used+1
- %endif
-    ALLOC_STACK   0x60, 16
-    pmovzxbw       xm0, [leftq+1]
-    vpermq          m0, m0, q0110
-    psrldq          m1, m0, 4
-    vpalignr        m2, m0, m0, 12
-    movu    [rsp+0x10], m0
-    movu    [rsp+0x28], m1
-    movu    [rsp+0x40], m2
-%elif %1 == 4
-    PUSH           r12
- %assign regs_used 13
- %if STACK_ALIGNMENT < 32
-    PUSH  r%+regs_used
-   %assign regs_used regs_used+1
- %endif
-    ALLOC_STACK 8*2+%1*%2*1, 16
-    pmovzxwd        m0, [leftq]
-    mova    [rsp+0x10], m0
-%else
-    PUSH           r12
-    PUSH           r13
- %assign regs_used 14
- %if STACK_ALIGNMENT < 32
-    PUSH  r%+regs_used
-  %assign regs_used regs_used+1
- %endif
-    ALLOC_STACK 8*4+%1*%2*2+32, 16
-    lea            r11, [strideq*3]
-    movu           xm4, [dstq+strideq*2]
-    pmovzxwq        m0, [leftq+0]
-    pmovzxwq        m1, [leftq+8]
-    vinserti128     m4, [dstq+r11], 1
-    pmovzxbd        m2, [leftq+1]
-    pmovzxbd        m3, [leftq+9]
-    mov       [rsp+16], botq
-    mova    [rsp+0x20], m0
-    mova    [rsp+0x40], m1
-    mova    [rsp+0x60], m2
-    mova    [rsp+0x80], m3
-    mova    [rsp+0xa0], m4
-    lea           botq, [dstq+strideq*4]
+ %assign regs_used 11
 %endif
 
- DEFINE_ARGS dst, stride, left, top, bot, pri, secdmp, zero, pridmp, damping
-    mov       dampingd, r8m
+%if STACK_ALIGNMENT < 32
+    PUSH  r%+regs_used
+ %assign regs_used regs_used+1
+%endif
+    ALLOC_STACK 8*2, 16
+
+ DEFINE_ARGS dst, stride, buf, zero, pri, secdmp, dir, damping, pridmp
+    movifnidn dampingd, dampingm
     xor          zerod, zerod
-    movifnidn     prid, prim
     sub       dampingd, 31
-    movifnidn  secdmpd, secdmpm
     test          prid, prid
     jz .sec_only
     movd           xm0, prid
@@ -474,221 +476,208 @@ cglobal cdef_filter_%1x%2_8bpc, 5, 10, 0, dst, stride, left, top, bot, \
     add        secdmpd, dampingd
     mov        [rsp+8], secdmpq                 ; sec_shift
 
- DEFINE_ARGS dst, stride, left, top, bot, pri, secdmp, table, pridmp
+ DEFINE_ARGS dst, stride, buf, _, pri, secdmp, dir, table, pridmp
     lea         tableq, [tap_table]
-    vpbroadcastb   m13, [tableq+pridmpq]        ; pri_shift_mask
-    vpbroadcastb   m14, [tableq+secdmpq]        ; sec_shift_mask
+    vpbroadcastd   m13, [tableq+pridmpq*4]      ; pri_shift_mask
+    vpbroadcastd   m14, [tableq+secdmpq*4]      ; sec_shift_mask
 
     ; pri/sec_taps[k] [4 total]
- DEFINE_ARGS dst, stride, left, top, bot, pri, sec, table, dir
+ DEFINE_ARGS dst, stride, buf, _, tap, _, dir, table
     vpbroadcastb    m0, xm0                     ; pri_strength
     vpbroadcastb    m1, xm1                     ; sec_strength
-    and           prid, 1
-    lea           priq, [tableq+priq*2+8]       ; pri_taps
-    lea           secq, [tableq+12]             ; sec_taps
+    and           tapd, 1
+    ; pri_taps/sec_taps
+    lea           tapq, [tableq+tapq*4+tap_weights-tap_table]
 
-    PREP_REGS       %1, %2
-%if %1*%2 > mmsize
+    PREP_REGS       %1, %2, %3
+%if %2 == 8
 .v_loop:
 %endif
-    LOAD_BLOCK      %1, %2, 1
+    LOAD_BLOCK      %1, %2, %3, 1
 .k_loop:
-    vpbroadcastb    m2, [priq+kq]                          ; pri_taps
-    vpbroadcastb    m3, [secq+kq]                          ; sec_taps
-    ACCUMULATE_TAP_BYTE 2, [rsp+0], m13, m0, m2, %1, %2, 1 ; dir + 0
-    ACCUMULATE_TAP_BYTE 4, [rsp+8], m14, m1, m3, %1, %2, 1 ; dir + 2
-    ACCUMULATE_TAP_BYTE 0, [rsp+8], m14, m1, m3, %1, %2, 1 ; dir - 2
+    vpbroadcastb    m2, [tapq+kq]                     ; pri_taps
+    vpbroadcastd    m3, [rsp+0]                       ; pri_shift
+    ACCUMULATE_TAP_BYTE 2, m3, m13, m0, m2, %1, %2, 1 ; dir + 0
+    vpbroadcastb    m2, [tapq+kq+2]                   ; sec_taps
+    vpbroadcastd    m3, [rsp+8]                       ; sec_shift
+    ACCUMULATE_TAP_BYTE 4, m3, m14, m1, m2, %1, %2, 1 ; dir + 2
+    ACCUMULATE_TAP_BYTE 0, m3, m14, m1, m2, %1, %2, 1 ; dir - 2
     dec             kq
     jge .k_loop
 
+    vpbroadcastd   m11, [pb_128]
+%if %3 == 1
+    vbroadcasti128  m2, [pb_deinterleave]
+%endif
     vpbroadcastd   m10, [pw_2048]
     pxor            m9, m9
-    ADJUST_PIXEL    %1, %2, m9, m10, 1
-%if %1*%2 > mmsize
-    lea           dstq, [dstq+strideq*4]
-    lea          top1q, [rsp+0xa0]
-    lea          top2q, [rsp+0xb0]
-    mov           botq, [rsp+16]
-    add             hq, 4
-    jl .v_loop
+    ADJUST_PIXEL    %1, %2, %3, m9, m10, m11, m2, 1
+%if %2 == 8
+%if %3 == 1
+    lea          dst1q, [dst1q+strideq*vloop_lines]
+    lea          dst2q, [dst2q+strideq*vloop_lines]
+%else
+    lea           dstq, [dstq+strideq*vloop_lines]
+%endif
+    add           bufq, buf_stride*vloop_lines
+    dec             hd
+    jg .v_loop
 %endif
     RET
 
 .pri_only:
- DEFINE_ARGS dst, stride, left, top, bot, pri, _, table, pridmp
+ DEFINE_ARGS dst, stride, buf, _, pri, _, dir, table, pridmp
     lea         tableq, [tap_table]
-    vpbroadcastb   m13, [tableq+pridmpq]        ; pri_shift_mask
+    vpbroadcastd   m13, [tableq+pridmpq*4]      ; pri_shift_mask
     ; pri/sec_taps[k] [4 total]
- DEFINE_ARGS dst, stride, left, top, bot, pri, _, table, dir
+ DEFINE_ARGS dst, stride, buf, _, tap, _, dir, table
     vpbroadcastb    m0, xm0                     ; pri_strength
-    and           prid, 1
-    lea           priq, [tableq+priq*2+8]       ; pri_taps
-    PREP_REGS       %1, %2
-    vpbroadcastd    m3, [pw_2048]
-    pxor            m1, m1
-%if %1*%2 > mmsize
+    and           tapd, 1
+    ; pri_taps
+    lea           tapq, [tableq+tapq*4+tap_weights-tap_table]
+    PREP_REGS       %1, %2, %3
+    vpbroadcastd    m1, [pb_128]
+%if %2 == 8
 .pri_v_loop:
 %endif
-    LOAD_BLOCK      %1, %2
+    LOAD_BLOCK      %1, %2, %3
 .pri_k_loop:
-    vpbroadcastb    m2, [priq+kq]                       ; pri_taps
-    ACCUMULATE_TAP_BYTE 2, [rsp+0], m13, m0, m2, %1, %2 ; dir + 0
+    vpbroadcastb    m2, [tapq+kq]                  ; pri_taps
+    vpbroadcastd    m3, [rsp+0]                    ; pri_shift
+    ACCUMULATE_TAP_BYTE 2, m3, m13, m0, m2, %1, %2 ; dir + 0
     dec             kq
     jge .pri_k_loop
-    ADJUST_PIXEL    %1, %2, m1, m3
-%if %1*%2 > mmsize
-    lea           dstq, [dstq+strideq*4]
-    lea          top1q, [rsp+0xa0]
-    lea          top2q, [rsp+0xb0]
-    mov           botq, [rsp+16]
-    add             hq, 4
-    jl .pri_v_loop
+
+    vpbroadcastd    m3, [pw_2048]
+%if %3 == 1
+    vbroadcasti128  m2, [pb_deinterleave]
+%endif
+    pxor            m11, m11
+    ADJUST_PIXEL    %1, %2, %3, m11, m3, m1, m2
+%if %2 == 8
+%if %3 == 1
+    lea          dst1q, [dst1q+strideq*vloop_lines]
+    lea          dst2q, [dst2q+strideq*vloop_lines]
+%else
+    lea           dstq, [dstq+strideq*vloop_lines]
+%endif
+    add           bufq, buf_stride*vloop_lines
+    dec             hd
+    jg .pri_v_loop
 %endif
     RET
 
 .sec_only:
- DEFINE_ARGS dst, stride, left, top, bot, _, secdmp, zero, _, damping
+ DEFINE_ARGS dst, stride, buf, _, _, secdmp, dir, damping
     movd           xm1, secdmpd
     lzcnt      secdmpd, secdmpd
     add        secdmpd, dampingd
     mov        [rsp+8], secdmpq                 ; sec_shift
- DEFINE_ARGS dst, stride, left, top, bot, _, secdmp, table
+ DEFINE_ARGS dst, stride, buf, _, _, secdmp, dir, table
     lea         tableq, [tap_table]
-    vpbroadcastb   m14, [tableq+secdmpq]        ; sec_shift_mask
+    vpbroadcastd   m14, [tableq+secdmpq*4]      ; sec_shift_mask
     ; pri/sec_taps[k] [4 total]
- DEFINE_ARGS dst, stride, left, top, bot, _, sec, table, dir
+ DEFINE_ARGS dst, stride, buf, _, tap, _, dir, table
     vpbroadcastb    m1, xm1                     ; sec_strength
-    lea           secq, [tableq+12]             ; sec_taps
-    PREP_REGS       %1, %2
-    vpbroadcastd    m2, [pw_2048]
-    pxor            m0, m0
-%if %1*%2 > mmsize
+    ; sec_taps
+    lea           tapq, [tableq+2+tap_weights-tap_table]
+    PREP_REGS       %1, %2, %3
+    vpbroadcastd    m0, [pb_128]
+%if %2 == 8
 .sec_v_loop:
 %endif
-    LOAD_BLOCK      %1, %2
+    LOAD_BLOCK      %1, %2, %3
 .sec_k_loop:
-    vpbroadcastb    m3, [secq+kq]                       ; sec_taps
-    ACCUMULATE_TAP_BYTE 4, [rsp+8], m14, m1, m3, %1, %2 ; dir + 2
-    ACCUMULATE_TAP_BYTE 0, [rsp+8], m14, m1, m3, %1, %2 ; dir - 2
+    vpbroadcastb    m2, [tapq+kq]                  ; sec_taps
+    vpbroadcastd    m3, [rsp+8]                    ; sec_shift
+    ACCUMULATE_TAP_BYTE 4, m3, m14, m1, m2, %1, %2 ; dir + 2
+    ACCUMULATE_TAP_BYTE 0, m3, m14, m1, m2, %1, %2 ; dir - 2
     dec             kq
     jge .sec_k_loop
-    ADJUST_PIXEL    %1, %2, m0, m2
-%if %1*%2 > mmsize
-    lea           dstq, [dstq+strideq*4]
-    lea          top1q, [rsp+0xa0]
-    lea          top2q, [rsp+0xb0]
-    mov           botq, [rsp+16]
-    add             hq, 4
-    jl .sec_v_loop
+
+    vpbroadcastd    m2, [pw_2048]
+%if %3 == 1
+    vbroadcasti128  m3, [pb_deinterleave]
+%endif
+    pxor           m11, m11
+    ADJUST_PIXEL    %1, %2, %3, m11, m2, m0, m3
+%if %2 == 8
+%if %3 == 1
+    lea          dst1q, [dst1q+strideq*vloop_lines]
+    lea          dst2q, [dst2q+strideq*vloop_lines]
+%else
+    lea           dstq, [dstq+strideq*vloop_lines]
+%endif
+    add           bufq, buf_stride*vloop_lines
+    dec             hd
+    jg .sec_v_loop
 %endif
     RET
 
+; Share 4 wide load code with both heights.
+%if !(%1 == 4 && %2 == 8)
 .d0k0:
 %if %1 == 4
- %if %2 == 4
-    vpbroadcastq    m6, [dstq+strideq*1-1]
-    vpbroadcastq   m10, [dstq+strideq*2-1]
-    movd           xm5, [topq+strideq*1+1]
-    movd           xm9, [dstq+strideq*0+1]
-    psrldq         m11, m6, 2
-    psrldq         m12, m10, 2
-    vinserti128     m6, [dstq+stride3q -1], 1
-    vinserti128    m10, [botq          -1], 1
-    vpblendd        m5, m11, 0x10
-    vpblendd        m9, m12, 0x10
-    movu           m11, [blend_4x4+16]
-    punpckldq       m6, m10
-    punpckldq       m5, m9
-    vpblendvb       m6, [rsp+gprsize+0x28], m11
- %else
-    movd           xm5, [topq +strideq*1+1]
-    movq           xm6, [dstq +strideq*1-1]
-    movq          xm10, [dstq +stride3q -1]
-    movq          xm11, [dst4q+strideq*1-1]
-    pinsrd         xm5, [dstq +strideq*0+1], 1
-    movhps         xm6, [dstq +strideq*2-1]
-    movhps        xm10, [dst4q+strideq*0-1]
-    movhps        xm11, [dst4q+strideq*2-1]
-    psrldq         xm9, xm6, 2
-    shufps         xm5, xm9, q2010   ; -1 +0 +1 +2
-    shufps         xm6, xm10, q2020  ; +1 +2 +3 +4
-    psrldq         xm9, xm11, 2
-    psrldq        xm10, 2
-    shufps        xm10, xm9, q2020   ; +3 +4 +5 +6
-    movd           xm9, [dst4q+stride3q -1]
-    pinsrd         xm9, [botq           -1], 1
-    shufps        xm11, xm9, q1020   ; +5 +6 +7 +8
-    pmovzxbw        m9, [leftq+3]
-    vinserti128     m6, xm11, 1
-    movu           m11, [blend_4x8_0+4]
-    vinserti128     m5, xm10, 1
-    vpblendvb       m6, m9, m11
- %endif
+    movq           xm5, [bufq-buf_stride*1+2]
+    vbroadcasti128 m10, [bufq+buf_stride*1-2]
+    vbroadcasti128 m11, [bufq+buf_stride*2-2]
+    movhps         xm5, [bufq+buf_stride*0+2]
+    vinserti128     m6, m10, [bufq+buf_stride*3-2], 1
+    vinserti128     m9, m11, [bufq+buf_stride*4-2], 1
+    shufps         m10, m11, q2121
+    punpcklqdq      m6, m9
+    vpblendd        m5, m10, 0xF0
+%elif %3 == 1 ; 8x8 && uv
+    ;    y,  x
+    ; {( 0,  0), (+1,  0)}
+
+    ; {(-1, +1), ( 0, +1)}
+    ; {(+1, -1), (+2, -1)}
+    movu           xm5, [bufq-buf_stride*1+2]
+    movu           xm6, [bufq+buf_stride*1-2]
+    vinserti128     m5, [bufq+buf_stride*0+2], 1
+    vinserti128     m6, [bufq+buf_stride*2-2], 1
 %else
-    lea            r13, [blend_8x8_0+16]
-    movq           xm5, [top2q         +1]
-    vbroadcasti128 m10, [dstq+strideq*1-1]
-    vbroadcasti128 m11, [dstq+strideq*2-1]
-    movhps         xm5, [dstq+strideq*0+1]
-    vinserti128     m6, m10, [dstq+stride3q-1], 1
-    vinserti128     m9, m11, [botq         -1], 1
+    movq           xm5, [bufq-buf_stride*1+1]
+    vbroadcasti128 m10, [bufq+buf_stride*1-1]
+    vbroadcasti128 m11, [bufq+buf_stride*2-1]
+    movhps         xm5, [bufq+buf_stride*0+1]
+    vinserti128     m6, m10, [bufq+buf_stride*3-1], 1
+    vinserti128     m9, m11, [bufq+buf_stride*4-1], 1
     psrldq         m10, 2
     psrldq         m11, 2
     punpcklqdq      m6, m9
-    movu            m9, [r13+hq*2*1+16*1]
     punpcklqdq     m10, m11
     vpblendd        m5, m10, 0xF0
-    vpblendvb       m6, [rsp+gprsize+0x60+hq*8+64+8*1], m9
 %endif
     ret
 .d1k0:
 .d2k0:
 .d3k0:
 %if %1 == 4
- %if %2 == 4
-    movq           xm6, [dstq+strideq*0-1]
-    movq           xm9, [dstq+strideq*1-1]
-    vinserti128     m6, [dstq+strideq*2-1], 1
-    vinserti128     m9, [dstq+stride3q -1], 1
-    movu           m11, [rsp+gprsize+0x10]
-    pcmpeqd        m12, m12
-    psrldq          m5, m6, 2
-    psrldq         m10, m9, 2
-    psrld          m12, 24
-    punpckldq       m6, m9
-    punpckldq       m5, m10
-    vpblendvb       m6, m11, m12
- %else
-    movq           xm6, [dstq +strideq*0-1]
-    movq           xm9, [dstq +strideq*2-1]
-    movhps         xm6, [dstq +strideq*1-1]
-    movhps         xm9, [dstq +stride3q -1]
-    movq          xm10, [dst4q+strideq*0-1]
-    movhps        xm10, [dst4q+strideq*1-1]
-    psrldq         xm5, xm6, 2
-    psrldq        xm11, xm9, 2
-    shufps         xm5, xm11, q2020
-    movq          xm11, [dst4q+strideq*2-1]
-    movhps        xm11, [dst4q+stride3q -1]
-    shufps         xm6, xm9, q2020
-    shufps         xm9, xm10, xm11, q2020
-    vinserti128     m6, xm9, 1
-    pmovzxbw        m9, [leftq+1]
-    psrldq        xm10, 2
-    psrldq        xm11, 2
-    shufps        xm10, xm11, q2020
-    vpbroadcastd   m11, [blend_4x8_0+4]
-    vinserti128     m5, xm10, 1
-    vpblendvb       m6, m9, m11
- %endif
-%else
-    movu           xm5, [dstq+strideq*0-1]
-    movu           xm9, [dstq+strideq*1-1]
-    vinserti128     m5, [dstq+strideq*2-1], 1
-    vinserti128     m9, [dstq+stride3q -1], 1
-    movu           m10, [blend_8x8_0+16]
+    movu           xm5, [bufq+buf_stride*0-2]
+    movu           xm9, [bufq+buf_stride*1-2]
+    vinserti128     m5, [bufq+buf_stride*2-2], 1
+    vinserti128     m9, [bufq+buf_stride*3-2], 1
     punpcklqdq      m6, m5, m9
-    vpblendvb       m6, [rsp+gprsize+0x60+hq*8+64], m10
+    shufps          m5, m9, q2121
+%elif %3 == 1
+    ;    y,  x
+    ; {( 0,  0), (+1,  0)}
+
+    ; {( 0, +1), (+1, +1)}
+    ; {( 0, -1), (+1, -1)}
+    movu            m6, [bufq+buf_stride*0-2]
+    movu            m9, [bufq+buf_stride*1-2]
+    vperm2i128      m5, m6, m9, 0x31 ; +6, +7, +8, +9
+    vinserti128     m6, xm9, 1       ; -2, -1,  0,  ...  +5
+    palignr         m5, m6, 4
+%else
+    movu           xm5, [bufq+buf_stride*0-1]
+    movu           xm9, [bufq+buf_stride*1-1]
+    vinserti128     m5, [bufq+buf_stride*2-1], 1
+    vinserti128     m9, [bufq+buf_stride*3-1], 1
+    punpcklqdq      m6, m5, m9
     psrldq          m5, 2
     psrldq          m9, 2
     punpcklqdq      m5, m9
@@ -696,57 +685,34 @@ cglobal cdef_filter_%1x%2_8bpc, 5, 10, 0, dst, stride, left, top, bot, \
     ret
 .d4k0:
 %if %1 == 4
- %if %2 == 4
-    vpbroadcastq   m10, [dstq+strideq*1-1]
-    vpbroadcastq   m11, [dstq+strideq*2-1]
-    movd           xm6, [topq+strideq*1-1]
-    movd           xm9, [dstq+strideq*0-1]
-    psrldq          m5, m10, 2
-    psrldq         m12, m11, 2
-    vpblendd        m6, m10, 0x10
-    vpblendd        m9, m11, 0x10
-    movu           m10, [blend_4x4]
-    vinserti128     m5, [dstq+stride3q +1], 1
-    vinserti128    m12, [botq          +1], 1
-    punpckldq       m6, m9
-    punpckldq       m5, m12
-    vpblendvb       m6, [rsp+gprsize+0x40], m10
- %else
-    movd           xm6, [topq +strideq*1-1]
-    movq           xm9, [dstq +strideq*1-1]
-    movq          xm10, [dstq +stride3q -1]
-    movq          xm11, [dst4q+strideq*1-1]
-    pinsrd         xm6, [dstq +strideq*0-1], 1
-    movhps         xm9, [dstq +strideq*2-1]
-    movhps        xm10, [dst4q+strideq*0-1]
-    movhps        xm11, [dst4q+strideq*2-1]
-    psrldq         xm5, xm9, 2
-    shufps         xm6, xm9, q2010
-    psrldq         xm9, xm10, 2
-    shufps         xm5, xm9, q2020
-    shufps        xm10, xm11, q2020
-    movd           xm9, [dst4q+stride3q +1]
-    vinserti128     m6, xm10, 1
-    pinsrd         xm9, [botq           +1], 1
-    psrldq        xm11, 2
-    pmovzxbw       m10, [leftq-1]
-    shufps        xm11, xm9, q1020
-    movu            m9, [blend_4x8_0]
-    vinserti128     m5, xm11, 1
-    vpblendvb       m6, m10, m9
- %endif
-%else
-    lea            r13, [blend_8x8_0+8]
-    movq           xm6, [top2q         -1]
-    vbroadcasti128  m5, [dstq+strideq*1-1]
-    vbroadcasti128  m9, [dstq+strideq*2-1]
-    movhps         xm6, [dstq+strideq*0-1]
-    movu           m11, [r13+hq*2*1+16*1]
+    movq           xm6, [bufq-buf_stride*1-2]
+    vbroadcasti128  m5, [bufq+buf_stride*1-2]
+    vbroadcasti128  m9, [bufq+buf_stride*2-2]
+    movhps         xm6, [bufq+buf_stride*0-2]
     punpcklqdq     m10, m5, m9
-    vinserti128     m5, [dstq+stride3q -1], 1
-    vinserti128     m9, [botq          -1], 1
+    vinserti128     m5, [bufq+buf_stride*3-2], 1
+    vinserti128     m9, [bufq+buf_stride*4-2], 1
     vpblendd        m6, m10, 0xF0
-    vpblendvb       m6, [rsp+gprsize+0x60+hq*8+64-8*1], m11
+    shufps          m5, m9, q2121
+%elif %3 == 1
+    ;    y,  x
+    ; {( 0,  0), (+1,  0)}
+
+    ; {(+1, +1), (+2, +1)}
+    ; {(-1, -1), ( 0, -1)}
+    movu           xm5, [bufq+buf_stride*1+2]
+    movu           xm6, [bufq-buf_stride*1-2]
+    vinserti128     m5, [bufq+buf_stride*2+2], 1
+    vinserti128     m6, [bufq+buf_stride*0-2], 1
+%else
+    movq           xm6, [bufq-buf_stride*1-1]
+    vbroadcasti128  m5, [bufq+buf_stride*1-1]
+    vbroadcasti128  m9, [bufq+buf_stride*2-1]
+    movhps         xm6, [bufq+buf_stride*0-1]
+    punpcklqdq     m10, m5, m9
+    vinserti128     m5, [bufq+buf_stride*3-1], 1
+    vinserti128     m9, [bufq+buf_stride*4-1], 1
+    vpblendd        m6, m10, 0xF0
     psrldq          m5, 2
     psrldq          m9, 2
     punpcklqdq      m5, m9
@@ -756,555 +722,492 @@ cglobal cdef_filter_%1x%2_8bpc, 5, 10, 0, dst, stride, left, top, bot, \
 .d6k0:
 .d7k0:
 %if %1 == 4
- %if %2 == 4
-    movd           xm6, [topq+strideq*1  ]
-    vpbroadcastd    m5, [dstq+strideq*1  ]
-    vpbroadcastd    m9, [dstq+strideq*2  ]
-    vpblendd       xm6, [dstq+strideq*0-4], 0x2
-    vpblendd        m5, m9, 0x22
-    vpblendd        m6, m5, 0x30
-    vinserti128     m5, [dstq+stride3q   ], 1
-    vpblendd        m5, [botq         -20], 0x20
- %else
-    movd           xm6, [topq +strideq*1]
-    movd           xm5, [dstq +strideq*1]
-    movd           xm9, [dstq +stride3q ]
-    movd          xm10, [dst4q+strideq*1]
-    movd          xm11, [dst4q+stride3q ]
-    pinsrd         xm6, [dstq +strideq*0], 1
-    pinsrd         xm5, [dstq +strideq*2], 1
-    pinsrd         xm9, [dst4q+strideq*0], 1
-    pinsrd        xm10, [dst4q+strideq*2], 1
-    pinsrd        xm11, [botq           ], 1
-    punpcklqdq     xm6, xm5
-    punpcklqdq     xm5, xm9
-    punpcklqdq     xm9, xm10
-    punpcklqdq    xm10, xm11
-    vinserti128     m6, xm9, 1
-    vinserti128     m5, xm10, 1
- %endif
+    movq           xm6, [bufq-buf_stride*1]
+    movq           xm5, [bufq+buf_stride*1]
+    movq           xm9, [bufq+buf_stride*3]
+    movhps         xm6, [bufq+buf_stride*0]
+    movhps         xm5, [bufq+buf_stride*2]
+    movhps         xm9, [bufq+buf_stride*4]
+    vinserti128     m6, xm5, 1
+    vinserti128     m5, xm9, 1
+%elif %3 == 1
+    ;    y,  x
+    ; {( 0,  0), (+1,  0)}
+
+    ; {(+1,  0), (+2,  0)}
+    ; {(-1,  0), ( 0,  0)}
+    vperm2i128      m9, m4, m4, 0x01
+    vinserti128     m5, m9, [bufq+buf_stride*2], 1
+    vinserti128     m6, m9, [bufq-buf_stride*1], 0
 %else
-    movq           xm6, [top2q         ]
-    movq           xm5, [dstq+strideq*1]
-    movq           xm9, [dstq+stride3q ]
-    movhps         xm6, [dstq+strideq*0]
-    movhps         xm5, [dstq+strideq*2]
-    movhps         xm9, [botq          ]
+    movq           xm6, [bufq-buf_stride*1]
+    movq           xm5, [bufq+buf_stride*1]
+    movq           xm9, [bufq+buf_stride*3]
+    movhps         xm6, [bufq+buf_stride*0]
+    movhps         xm5, [bufq+buf_stride*2]
+    movhps         xm9, [bufq+buf_stride*4]
     vinserti128     m6, xm5, 1
     vinserti128     m5, xm9, 1
 %endif
     ret
 .d0k1:
 %if %1 == 4
- %if %2 == 4
-    movd           xm6, [dstq+strideq*2-2]
-    movd           xm9, [dstq+stride3q -2]
-    movd           xm5, [topq+strideq*0+2]
-    movd          xm10, [topq+strideq*1+2]
-    pinsrw         xm6, [leftq+4], 0
-    pinsrw         xm9, [leftq+6], 0
-    vinserti128     m5, [dstq+strideq*0+2], 1
-    vinserti128    m10, [dstq+strideq*1+2], 1
-    vinserti128     m6, [botq+strideq*0-2], 1
-    vinserti128     m9, [botq+strideq*1-2], 1
-    punpckldq       m5, m10
-    punpckldq       m6, m9
- %else
-    movq           xm6, [dstq +strideq*2-2]
-    movd          xm10, [dst4q+strideq*2-2]
-    movd           xm5, [topq +strideq*0+2]
-    movq           xm9, [dst4q+strideq*0-2]
-    movhps         xm6, [dstq +stride3q -2]
-    pinsrw        xm10, [dst4q+stride3q   ], 3
-    pinsrd         xm5, [topq +strideq*1+2], 1
-    movhps         xm9, [dst4q+strideq*1-2]
-    pinsrd        xm10, [botq +strideq*0-2], 2
-    pinsrd         xm5, [dstq +strideq*0+2], 2
-    pinsrd        xm10, [botq +strideq*1-2], 3
-    pinsrd         xm5, [dstq +strideq*1+2], 3
-    shufps        xm11, xm6, xm9, q3131
-    shufps         xm6, xm9, q2020
-    movu            m9, [blend_4x8_3+8]
-    vinserti128     m6, xm10, 1
-    vinserti128     m5, xm11, 1
-    vpblendvb       m6, [rsp+gprsize+0x10+8], m9
- %endif
-%else
-    lea            r13, [blend_8x8_1+16]
-    movq           xm6, [dstq+strideq*2-2]
-    movq           xm9, [dstq+stride3q -2]
-    movq           xm5, [top1q         +2]
-    movq          xm10, [top2q         +2]
-    movu           m11, [r13+hq*2*2+16*2]
-    vinserti128     m6, [botq+strideq*0-2], 1
-    vinserti128     m9, [botq+strideq*1-2], 1
-    vinserti128     m5, [dstq+strideq*0+2], 1
-    vinserti128    m10, [dstq+strideq*1+2], 1
+    movq           xm6, [bufq+buf_stride*2-4]
+    movq           xm9, [bufq+buf_stride*3-4]
+    movq           xm5, [bufq-buf_stride*2+4]
+    movq          xm10, [bufq-buf_stride*1+4]
+    vinserti128     m6, [bufq+buf_stride*4-4], 1
+    vinserti128     m9, [bufq+buf_stride*5-4], 1
+    vinserti128     m5, [bufq+buf_stride*0+4], 1
+    vinserti128    m10, [bufq+buf_stride*1+4], 1
     punpcklqdq      m6, m9
     punpcklqdq      m5, m10
-    vpblendvb       m6, [rsp+gprsize+0x20+hq*8+64+8*2], m11
+%elif %3 == 1
+    ;    y,  x
+    ; {( 0,  0), (+1,  0)}
+
+    ; {(-2, +2), (-1, +2)}
+    ; {(+2, -2), (+3, -2)}
+    movu           xm5, [bufq-buf_stride*2+4]
+    movu           xm6, [bufq+buf_stride*2-4]
+    vinserti128     m5, [bufq-buf_stride*1+4], 1
+    vinserti128     m6, [bufq+buf_stride*3-4], 1
+%else
+    movq           xm6, [bufq+buf_stride*2-2]
+    movq           xm9, [bufq+buf_stride*3-2]
+    movq           xm5, [bufq-buf_stride*2+2]
+    movq          xm10, [bufq-buf_stride*1+2]
+    vinserti128     m6, [bufq+buf_stride*4-2], 1
+    vinserti128     m9, [bufq+buf_stride*5-2], 1
+    vinserti128     m5, [bufq+buf_stride*0+2], 1
+    vinserti128    m10, [bufq+buf_stride*1+2], 1
+    punpcklqdq      m6, m9
+    punpcklqdq      m5, m10
 %endif
     ret
 .d1k1:
 %if %1 == 4
- %if %2 == 4
-    vpbroadcastq    m6, [dstq+strideq*1-2]
-    vpbroadcastq    m9, [dstq+strideq*2-2]
-    movd           xm5, [topq+strideq*1+2]
-    movd          xm10, [dstq+strideq*0+2]
-    psrldq         m11, m6, 4
-    psrldq         m12, m9, 4
-    vpblendd        m5, m11, 0x10
-    movq          xm11, [leftq+2]
-    vinserti128     m6, [dstq+stride3q-2], 1
-    punpckldq     xm11, xm11
-    vpblendd       m10, m12, 0x10
-    pcmpeqd        m12, m12
-    pmovzxwd       m11, xm11
-    psrld          m12, 16
-    punpckldq       m6, m9
-    vpbroadcastd    m9, [botq-2]
-    vpblendvb       m6, m11, m12
-    punpckldq       m5, m10
-    vpblendd        m6, m9, 0x20
- %else
-    movd           xm5, [topq +strideq*1+2]
-    movq           xm6, [dstq +strideq*1-2]
-    movq           xm9, [dstq +stride3q -2]
-    movq          xm10, [dst4q+strideq*1-2]
-    movd          xm11, [dst4q+stride3q -2]
-    pinsrd         xm5, [dstq +strideq*0+2], 1
-    movhps         xm6, [dstq +strideq*2-2]
-    movhps         xm9, [dst4q+strideq*0-2]
-    movhps        xm10, [dst4q+strideq*2-2]
-    pinsrd        xm11, [botq           -2], 1
-    shufps         xm5, xm6, q3110
-    shufps         xm6, xm9, q2020
-    shufps         xm9, xm10, q3131
-    shufps        xm10, xm11, q1020
-    movu           m11, [blend_4x8_2+4]
-    vinserti128     m6, xm10, 1
-    vinserti128     m5, xm9, 1
-    vpblendvb       m6, [rsp+gprsize+0x10+4], m11
- %endif
-%else
-    lea            r13, [blend_8x8_1+16]
-    movq           xm5, [top2q         +2]
-    vbroadcasti128  m6, [dstq+strideq*1-2]
-    vbroadcasti128  m9, [dstq+strideq*2-2]
-    movhps         xm5, [dstq+strideq*0+2]
-    shufps         m10, m6, m9, q2121
-    vinserti128     m6, [dstq+stride3q -2], 1
-    vinserti128     m9, [botq          -2], 1
-    movu           m11, [r13+hq*2*1+16*1]
+    movq           xm5, [bufq-buf_stride*1+4]
+    vbroadcasti128  m6, [bufq+buf_stride*1-4]
+    vbroadcasti128  m9, [bufq+buf_stride*2-4]
+    movhps         xm5, [bufq+buf_stride*0+4]
+    shufps         m10, m6, m9, q3232            ; +2 +3 +4 +5
+    vinserti128     m6, [bufq+buf_stride*3-4], 1
+    vinserti128     m9, [bufq+buf_stride*4-4], 1
     vpblendd        m5, m10, 0xF0
     punpcklqdq      m6, m9
-    vpblendvb       m6, [rsp+gprsize+0x20+hq*8+64+8*1], m11
+%elif %3 == 1
+    ;    y,  x
+    ; {( 0,  0), (+1,  0)}
+
+    ; {(-1, +2), (-0, +2)}
+    ; {(+1, -2), (+2, -2)}
+    movu           xm5, [bufq-buf_stride*1+4]
+    movu           xm6, [bufq+buf_stride*1-4]
+    vinserti128     m5, [bufq+buf_stride*0+4], 1
+    vinserti128     m6, [bufq+buf_stride*2-4], 1
+%else
+    movq           xm5, [bufq-buf_stride*1+2]
+    vbroadcasti128  m6, [bufq+buf_stride*1-2]
+    vbroadcasti128  m9, [bufq+buf_stride*2-2]
+    movhps         xm5, [bufq+buf_stride*0+2]
+    shufps         m10, m6, m9, q2121
+    vinserti128     m6, [bufq+buf_stride*3-2], 1
+    vinserti128     m9, [bufq+buf_stride*4-2], 1
+    vpblendd        m5, m10, 0xF0
+    punpcklqdq      m6, m9
 %endif
     ret
 .d2k1:
 %if %1 == 4
- %if %2 == 4
-    movq          xm11, [leftq]
-    movq           xm6, [dstq+strideq*0-2]
-    movq           xm9, [dstq+strideq*1-2]
-    vinserti128     m6, [dstq+strideq*2-2], 1
-    vinserti128     m9, [dstq+stride3q -2], 1
-    punpckldq     xm11, xm11
-    psrldq          m5, m6, 4
-    psrldq         m10, m9, 4
-    pmovzxwd       m11, xm11
-    punpckldq       m6, m9
-    punpckldq       m5, m10
-    pblendw         m6, m11, 0x05
- %else
-    movq           xm5, [dstq +strideq*0-2]
-    movq           xm9, [dstq +strideq*2-2]
-    movq          xm10, [dst4q+strideq*0-2]
-    movq          xm11, [dst4q+strideq*2-2]
-    movhps         xm5, [dstq +strideq*1-2]
-    movhps         xm9, [dstq +stride3q -2]
-    movhps        xm10, [dst4q+strideq*1-2]
-    movhps        xm11, [dst4q+stride3q -2]
-    shufps         xm6, xm5, xm9, q2020
-    shufps         xm5, xm9, q3131
-    shufps         xm9, xm10, xm11, q2020
-    shufps        xm10, xm11, q3131
-    pmovzxwd       m11, [leftq]
-    vinserti128     m6, xm9, 1
-    vinserti128     m5, xm10, 1
-    pblendw         m6, m11, 0x55
- %endif
+    movu           xm5, [bufq+buf_stride*0-4]
+    movu           xm9, [bufq+buf_stride*1-4]
+    vinserti128     m5, [bufq+buf_stride*2-4], 1
+    vinserti128     m9, [bufq+buf_stride*3-4], 1
+    shufps          m6, m5, m9, q1010
+    shufps          m5, m9, q3232
+%elif %3 == 1
+    ;    y,  x
+    ; {( 0,  0), (+1,  0)}
+
+    ; {( 0, +1), (+1, +2)}
+    ; {( 0, -2), (+1, -2)}
+    movu            m5, [bufq+buf_stride*0-4]
+    movu            m9, [bufq+buf_stride*1-4]
+    vperm2i128      m6, m5, m9, 0x31 ; +4, +5, +6, +7
+    vinserti128     m5, xm9, 1       ; -4, -3, -2,  ...  +3
+    palignr         m6, m5, 8
 %else
-    mova           m11, [rsp+gprsize+0x20+hq*8+64]
-    movu           xm5, [dstq+strideq*0-2]
-    movu           xm9, [dstq+strideq*1-2]
-    vinserti128     m5, [dstq+strideq*2-2], 1
-    vinserti128     m9, [dstq+stride3q -2], 1
+    movu           xm5, [bufq+buf_stride*0-2]
+    movu           xm9, [bufq+buf_stride*1-2]
+    vinserti128     m5, [bufq+buf_stride*2-2], 1
+    vinserti128     m9, [bufq+buf_stride*3-2], 1
     shufps          m6, m5, m9, q1010
     shufps          m5, m9, q2121
-    pblendw         m6, m11, 0x11
 %endif
     ret
 .d3k1:
 %if %1 == 4
- %if %2 == 4
-    vpbroadcastq   m11, [dstq+strideq*1-2]
-    vpbroadcastq   m12, [dstq+strideq*2-2]
-    movd           xm6, [topq+strideq*1-2]
-    movd           xm9, [dstq+strideq*0-2]
-    pblendw        m11, [leftq-16+2], 0x01
-    pblendw        m12, [leftq-16+4], 0x01
-    pinsrw         xm9, [leftq- 0+0], 0
-    psrldq          m5, m11, 4
-    psrldq         m10, m12, 4
-    vinserti128     m5, [dstq+stride3q +2], 1
-    vinserti128    m10, [botq          +2], 1
-    vpblendd        m6, m11, 0x10
-    vpblendd        m9, m12, 0x10
-    punpckldq       m6, m9
-    punpckldq       m5, m10
- %else
-    movd           xm6, [topq +strideq*1-2]
-    movq           xm5, [dstq +strideq*1-2]
-    movq           xm9, [dstq +stride3q -2]
-    movq          xm10, [dst4q+strideq*1-2]
-    movd          xm11, [dst4q+stride3q +2]
-    pinsrw         xm6, [dstq +strideq*0  ], 3
-    movhps         xm5, [dstq +strideq*2-2]
-    movhps         xm9, [dst4q+strideq*0-2]
-    movhps        xm10, [dst4q+strideq*2-2]
-    pinsrd        xm11, [botq           +2], 1
-    shufps         xm6, xm5, q2010
-    shufps         xm5, xm9, q3131
-    shufps         xm9, xm10, q2020
-    shufps        xm10, xm11, q1031
-    movu           m11, [blend_4x8_2]
-    vinserti128     m6, xm9, 1
-    vinserti128     m5, xm10, 1
-    vpblendvb       m6, [rsp+gprsize+0x10-4], m11
- %endif
-%else
-    lea            r13, [blend_8x8_1+8]
-    movq           xm6, [top2q         -2]
-    vbroadcasti128  m5, [dstq+strideq*1-2]
-    vbroadcasti128 m10, [dstq+strideq*2-2]
-    movhps         xm6, [dstq+strideq*0-2]
+    movq           xm6, [bufq-buf_stride*1-4]
+    vbroadcasti128  m5, [bufq+buf_stride*1-4]
+    vbroadcasti128 m10, [bufq+buf_stride*2-4]
+    movhps         xm6, [bufq+buf_stride*0-4]
     punpcklqdq      m9, m5, m10
-    vinserti128     m5, [dstq+stride3q -2], 1
-    vinserti128    m10, [botq          -2], 1
-    movu           m11, [r13+hq*2*1+16*1]
+    vinserti128     m5, [bufq+buf_stride*3-4], 1
+    vinserti128    m10, [bufq+buf_stride*4-4], 1
+    vpblendd        m6, m9, 0xF0
+    shufps          m5, m10, q3232
+%elif %3 == 1
+    ;    y,  x
+    ; {( 0,  0), (+1,  0)}
+
+    ; {(+1, +2), (+2, +2)}
+    ; {(-1, -2), (+0, -2)}
+    movu           xm5, [bufq+buf_stride*1+4]
+    movu           xm6, [bufq-buf_stride*1-4]
+    vinserti128     m5, [bufq+buf_stride*2+4], 1
+    vinserti128     m6, [bufq+buf_stride*0-4], 1
+%else
+    movq           xm6, [bufq-buf_stride*1-2]
+    vbroadcasti128  m5, [bufq+buf_stride*1-2]
+    vbroadcasti128 m10, [bufq+buf_stride*2-2]
+    movhps         xm6, [bufq+buf_stride*0-2]
+    punpcklqdq      m9, m5, m10
+    vinserti128     m5, [bufq+buf_stride*3-2], 1
+    vinserti128    m10, [bufq+buf_stride*4-2], 1
     vpblendd        m6, m9, 0xF0
     shufps          m5, m10, q2121
-    vpblendvb       m6, [rsp+gprsize+0x20+hq*8+64-8*1], m11
 %endif
     ret
 .d4k1:
 %if %1 == 4
- %if %2 == 4
-    vinserti128     m6, [dstq+strideq*0-2], 1
-    vinserti128     m9, [dstq+strideq*1-2], 1
-    movd           xm5, [dstq+strideq*2+2]
-    movd          xm10, [dstq+stride3q +2]
-    pblendw         m6, [leftq-16+0], 0x01
-    pblendw         m9, [leftq-16+2], 0x01
-    vinserti128     m5, [botq+strideq*0+2], 1
-    vinserti128    m10, [botq+strideq*1+2], 1
-    vpblendd        m6, [topq+strideq*0-2], 0x01
-    vpblendd        m9, [topq+strideq*1-2], 0x01
-    punpckldq       m5, m10
-    punpckldq       m6, m9
- %else
-    movd           xm6, [topq +strideq*0-2]
-    movq           xm5, [dstq +strideq*2-2]
-    movq           xm9, [dst4q+strideq*0-2]
-    movd          xm10, [dst4q+strideq*2+2]
-    pinsrd         xm6, [topq +strideq*1-2], 1
-    movhps         xm5, [dstq +stride3q -2]
-    movhps         xm9, [dst4q+strideq*1-2]
-    pinsrd        xm10, [dst4q+stride3q +2], 1
-    pinsrd         xm6, [dstq +strideq*0-2], 2
-    pinsrd        xm10, [botq +strideq*0+2], 2
-    pinsrd         xm6, [dstq +strideq*1-2], 3
-    pinsrd        xm10, [botq +strideq*1+2], 3
-    shufps        xm11, xm5, xm9, q2020
-    shufps         xm5, xm9, q3131
-    movu            m9, [blend_4x8_3]
-    vinserti128     m6, xm11, 1
-    vinserti128     m5, xm10, 1
-    vpblendvb       m6, [rsp+gprsize+0x10-8], m9
- %endif
-%else
-    lea            r13, [blend_8x8_1]
-    movu           m11, [r13+hq*2*2+16*2]
-    movq           xm6, [top1q         -2]
-    movq           xm9, [top2q         -2]
-    movq           xm5, [dstq+strideq*2+2]
-    movq          xm10, [dstq+stride3q +2]
-    vinserti128     m6, [dstq+strideq*0-2], 1
-    vinserti128     m9, [dstq+strideq*1-2], 1
-    vinserti128     m5, [botq+strideq*0+2], 1
-    vinserti128    m10, [botq+strideq*1+2], 1
+    movq           xm6, [bufq-buf_stride*2-4]
+    movq           xm9, [bufq-buf_stride*1-4]
+    movq           xm5, [bufq+buf_stride*2+4]
+    movq          xm10, [bufq+buf_stride*3+4]
+    vinserti128     m6, [bufq+buf_stride*0-4], 1
+    vinserti128     m9, [bufq+buf_stride*1-4], 1
+    vinserti128     m5, [bufq+buf_stride*4+4], 1
+    vinserti128    m10, [bufq+buf_stride*5+4], 1
     punpcklqdq      m6, m9
-    vpblendvb       m6, [rsp+gprsize+0x20+hq*8+64-8*2], m11
+    punpcklqdq      m5, m10
+%elif %3 == 1
+    ;    y,  x
+    ; {( 0,  0), (+1,  0)}
+
+    ; {(+2, +2), (+3, +2)}
+    ; {(-2, -2), (-1, -2)}
+    movu           xm5, [bufq+buf_stride*2+4]
+    movu           xm6, [bufq-buf_stride*2-4]
+    vinserti128     m5, [bufq+buf_stride*3+4], 1
+    vinserti128     m6, [bufq-buf_stride*1-4], 1
+%else
+    movq           xm6, [bufq-buf_stride*2-2]
+    movq           xm9, [bufq-buf_stride*1-2]
+    movq           xm5, [bufq+buf_stride*2+2]
+    movq          xm10, [bufq+buf_stride*3+2]
+    vinserti128     m6, [bufq+buf_stride*0-2], 1
+    vinserti128     m9, [bufq+buf_stride*1-2], 1
+    vinserti128     m5, [bufq+buf_stride*4+2], 1
+    vinserti128    m10, [bufq+buf_stride*5+2], 1
+    punpcklqdq      m6, m9
     punpcklqdq      m5, m10
 %endif
     ret
 .d5k1:
 %if %1 == 4
- %if %2 == 4
-    movd           xm6, [topq+strideq*0-1]
-    movd           xm9, [topq+strideq*1-1]
-    movd           xm5, [dstq+strideq*2+1]
-    movd          xm10, [dstq+stride3q +1]
-    pcmpeqd        m12, m12
-    pmovzxbw       m11, [leftq-8+1]
-    psrld          m12, 24
-    vinserti128     m6, [dstq+strideq*0-1], 1
-    vinserti128     m9, [dstq+strideq*1-1], 1
-    vinserti128     m5, [botq+strideq*0+1], 1
-    vinserti128    m10, [botq+strideq*1+1], 1
-    punpckldq       m6, m9
-    pxor            m9, m9
-    vpblendd       m12, m9, 0x0F
-    punpckldq       m5, m10
-    vpblendvb       m6, m11, m12
- %else
-    movd           xm6, [topq +strideq*0-1]
-    movq           xm5, [dstq +strideq*2-1]
-    movq           xm9, [dst4q+strideq*0-1]
-    movd          xm10, [dst4q+strideq*2+1]
-    pinsrd         xm6, [topq +strideq*1-1], 1
-    movhps         xm5, [dstq +stride3q -1]
-    movhps         xm9, [dst4q+strideq*1-1]
-    pinsrd        xm10, [dst4q+stride3q +1], 1
-    pinsrd         xm6, [dstq +strideq*0-1], 2
-    pinsrd        xm10, [botq +strideq*0+1], 2
-    pinsrd         xm6, [dstq +strideq*1-1], 3
-    pinsrd        xm10, [botq +strideq*1+1], 3
-    shufps        xm11, xm5, xm9, q2020
-    vinserti128     m6, xm11, 1
-    pmovzxbw       m11, [leftq-3]
-    psrldq         xm5, 2
-    psrldq         xm9, 2
-    shufps         xm5, xm9, q2020
-    movu            m9, [blend_4x8_1]
-    vinserti128     m5, xm10, 1
-    vpblendvb       m6, m11, m9
- %endif
-%else
-    lea            r13, [blend_8x8_0]
-    movu           m11, [r13+hq*2*2+16*2]
-    movq           xm6, [top1q         -1]
-    movq           xm9, [top2q         -1]
-    movq           xm5, [dstq+strideq*2+1]
-    movq          xm10, [dstq+stride3q +1]
-    vinserti128     m6, [dstq+strideq*0-1], 1
-    vinserti128     m9, [dstq+strideq*1-1], 1
-    vinserti128     m5, [botq+strideq*0+1], 1
-    vinserti128    m10, [botq+strideq*1+1], 1
+    movq           xm6, [bufq-buf_stride*2-2]
+    movq           xm9, [bufq-buf_stride*1-2]
+    movq           xm5, [bufq+buf_stride*2+2]
+    movq          xm10, [bufq+buf_stride*3+2]
+    vinserti128     m6, [bufq+buf_stride*0-2], 1
+    vinserti128     m9, [bufq+buf_stride*1-2], 1
+    vinserti128     m5, [bufq+buf_stride*4+2], 1
+    vinserti128    m10, [bufq+buf_stride*5+2], 1
     punpcklqdq      m6, m9
     punpcklqdq      m5, m10
-    vpblendvb       m6, [rsp+gprsize+0x60+hq*8+64-8*2], m11
+%elif %3 == 1
+    ;    y,  x
+    ; {( 0,  0), (+1,  0)}
+
+    ; {(+2, +1), (+3, +1)}
+    ; {(-2, -1), (-1, -1)}
+    movu           xm5, [bufq+buf_stride*2+2]
+    movu           xm6, [bufq-buf_stride*2-2]
+    vinserti128     m5, [bufq+buf_stride*3+2], 1
+    vinserti128     m6, [bufq-buf_stride*1-2], 1
+%else
+    movq           xm6, [bufq-buf_stride*2-1]
+    movq           xm9, [bufq-buf_stride*1-1]
+    movq           xm5, [bufq+buf_stride*2+1]
+    movq          xm10, [bufq+buf_stride*3+1]
+    vinserti128     m6, [bufq+buf_stride*0-1], 1
+    vinserti128     m9, [bufq+buf_stride*1-1], 1
+    vinserti128     m5, [bufq+buf_stride*4+1], 1
+    vinserti128    m10, [bufq+buf_stride*5+1], 1
+    punpcklqdq      m6, m9
+    punpcklqdq      m5, m10
 %endif
     ret
 .d6k1:
 %if %1 == 4
- %if %2 == 4
-    movd           xm6, [topq+strideq*0]
-    movd           xm9, [topq+strideq*1]
-    movd           xm5, [dstq+strideq*2]
-    movd          xm10, [dstq+stride3q ]
-    vinserti128     m6, [dstq+strideq*0], 1
-    vinserti128     m9, [dstq+strideq*1], 1
-    vinserti128     m5, [botq+strideq*0], 1
-    vinserti128    m10, [botq+strideq*1], 1
-    punpckldq       m6, m9
-    punpckldq       m5, m10
- %else
-    movd           xm5, [dstq +strideq*2]
-    movd           xm6, [topq +strideq*0]
-    movd           xm9, [dst4q+strideq*2]
-    pinsrd         xm5, [dstq +stride3q ], 1
-    pinsrd         xm6, [topq +strideq*1], 1
-    pinsrd         xm9, [dst4q+stride3q ], 1
-    pinsrd         xm5, [dst4q+strideq*0], 2
-    pinsrd         xm6, [dstq +strideq*0], 2
-    pinsrd         xm9, [botq +strideq*0], 2
-    pinsrd         xm5, [dst4q+strideq*1], 3
-    pinsrd         xm6, [dstq +strideq*1], 3
-    pinsrd         xm9, [botq +strideq*1], 3
-    vinserti128     m6, xm5, 1
-    vinserti128     m5, xm9, 1
- %endif
+    movq           xm5, [bufq+buf_stride*4]
+    movq           xm6, [bufq-buf_stride*2]
+    movhps         xm5, [bufq+buf_stride*5]
+    movhps         xm6, [bufq-buf_stride*1]
+    vperm2i128      m9, m4, m4, 0x01        ; +2 +3 +0 +1
+    vinserti128     m5, m9, xm5, 1
+    vpblendd        m6, m9, 0xF0
+%elif %3 == 1
+    ;    y,  x
+    ; {( 0,  0), (+1,  0)}
+
+    ; {(+2,  0), (+3,  0)}
+    ; {(-2,  0), (-1,  0)}
+    movu           xm5, [bufq+buf_stride*2]
+    movu           xm6, [bufq-buf_stride*2]
+    vinserti128     m5, [bufq+buf_stride*3], 1
+    vinserti128     m6, [bufq-buf_stride*1], 1
 %else
-    movq           xm5, [dstq+strideq*2]
-    movq           xm9, [botq+strideq*0]
-    movq           xm6, [top1q         ]
-    movq          xm10, [dstq+strideq*0]
-    movhps         xm5, [dstq+stride3q ]
-    movhps         xm9, [botq+strideq*1]
-    movhps         xm6, [top2q         ]
-    movhps        xm10, [dstq+strideq*1]
-    vinserti128     m5, xm9, 1
-    vinserti128     m6, xm10, 1
+    movq           xm5, [bufq+buf_stride*4]
+    movq           xm6, [bufq-buf_stride*2]
+    movhps         xm5, [bufq+buf_stride*5]
+    movhps         xm6, [bufq-buf_stride*1]
+    vperm2i128      m9, m4, m4, 0x01        ; +2 +3 +0 +1
+    vinserti128     m5, m9, xm5, 1
+    vpblendd        m6, m9, 0xF0
 %endif
     ret
 .d7k1:
 %if %1 == 4
- %if %2 == 4
-    movd           xm5, [dstq+strideq*2-1]
-    movd           xm9, [dstq+stride3q -1]
-    movd           xm6, [topq+strideq*0+1]
-    movd          xm10, [topq+strideq*1+1]
-    pinsrb         xm5, [leftq+ 5], 0
-    pinsrb         xm9, [leftq+ 7], 0
-    vinserti128     m6, [dstq+strideq*0+1], 1
-    vinserti128    m10, [dstq+strideq*1+1], 1
-    vinserti128     m5, [botq+strideq*0-1], 1
-    vinserti128     m9, [botq+strideq*1-1], 1
-    punpckldq       m6, m10
-    punpckldq       m5, m9
- %else
-    movd           xm6, [topq +strideq*0+1]
-    movq           xm9, [dstq +strideq*2-1]
-    movq          xm10, [dst4q+strideq*0-1]
-    movd          xm11, [dst4q+strideq*2-1]
-    pinsrd         xm6, [topq +strideq*1+1], 1
-    movhps         xm9, [dstq +stride3q -1]
-    movhps        xm10, [dst4q+strideq*1-1]
-    pinsrd        xm11, [dst4q+stride3q -1], 1
-    pinsrd         xm6, [dstq +strideq*0+1], 2
-    pinsrd        xm11, [botq +strideq*0-1], 2
-    pinsrd         xm6, [dstq +strideq*1+1], 3
-    pinsrd        xm11, [botq +strideq*1-1], 3
-    shufps         xm5, xm9, xm10, q2020
-    vinserti128     m5, xm11, 1
-    pmovzxbw       m11, [leftq+5]
-    psrldq         xm9, 2
-    psrldq        xm10, 2
-    shufps         xm9, xm10, q2020
-    movu           m10, [blend_4x8_1+8]
-    vinserti128     m6, xm9, 1
-    vpblendvb       m5, m11, m10
- %endif
-%else
-    lea            r13, [blend_8x8_0+16]
-    movq           xm5, [dstq+strideq*2-1]
-    movq           xm9, [botq+strideq*0-1]
-    movq           xm6, [top1q         +1]
-    movq          xm10, [dstq+strideq*0+1]
-    movhps         xm5, [dstq+stride3q -1]
-    movhps         xm9, [botq+strideq*1-1]
-    movhps         xm6, [top2q         +1]
-    movhps        xm10, [dstq+strideq*1+1]
-    movu           m11, [r13+hq*2*2+16*2]
+    movq           xm5, [bufq+buf_stride*2-2]
+    movq           xm9, [bufq+buf_stride*4-2]
+    movq           xm6, [bufq-buf_stride*2+2]
+    movq          xm10, [bufq+buf_stride*0+2]
+    movhps         xm5, [bufq+buf_stride*3-2]
+    movhps         xm9, [bufq+buf_stride*5-2]
+    movhps         xm6, [bufq-buf_stride*1+2]
+    movhps        xm10, [bufq+buf_stride*1+2]
     vinserti128     m5, xm9, 1
     vinserti128     m6, xm10, 1
-    vpblendvb       m5, [rsp+gprsize+0x60+hq*8+64+8*2], m11
+%elif %3 == 1
+    ;    y,  x
+    ; {( 0,  0), (+1,  0)}
+
+    ; {(+2, -1), (+3, -1)}
+    ; {(-2, +1), (-1, +1)}
+    movu           xm5, [bufq+buf_stride*2-2]
+    movu           xm6, [bufq-buf_stride*2+2]
+    vinserti128     m5, [bufq+buf_stride*3-2], 1
+    vinserti128     m6, [bufq-buf_stride*1+2], 1
+%else
+    movq           xm5, [bufq+buf_stride*2-1]
+    movq           xm9, [bufq+buf_stride*4-1]
+    movq           xm6, [bufq-buf_stride*2+1]
+    movq          xm10, [bufq+buf_stride*0+1]
+    movhps         xm5, [bufq+buf_stride*3-1]
+    movhps         xm9, [bufq+buf_stride*5-1]
+    movhps         xm6, [bufq-buf_stride*1+1]
+    movhps        xm10, [bufq+buf_stride*1+1]
+    vinserti128     m5, xm9, 1
+    vinserti128     m6, xm10, 1
 %endif
     ret
+%endif ; if !(%1 == 4 && %2 == 8)
 
 .border_block:
- DEFINE_ARGS dst, stride, left, top, bot, pri, sec, stride3, dst4, edge
+ DEFINE_ARGS dst, stride, buf, _, pri, sec, dir, damping, edge
 %define rstk rsp
 %assign stack_offset stack_offset_entry
-%assign regs_used 10
+%assign regs_used regs_used_entry
 %if STACK_ALIGNMENT < 32
     PUSH  r%+regs_used
  %assign regs_used regs_used+1
 %endif
-    ALLOC_STACK 2*16+(%2+4)*32, 16
-%define px rsp+2*16+2*32
+    ALLOC_STACK 2*16+(%2+4)*64, 16
+%define px rsp+2*16+2*64
 
     pcmpeqw        m14, m14
     psllw          m14, 15                  ; 0x8000
-
-    ; prepare pixel buffers - body/right
-%if %1 == 4
-    INIT_XMM avx2
-%endif
-%if %2 == 8
-    lea          dst4q, [dstq+strideq*4]
-%endif
-    lea       stride3q, [strideq*3]
-    test         edgeb, 2                   ; have_right
-    jz .no_right
-    pmovzxbw        m1, [dstq+strideq*0]
-    pmovzxbw        m2, [dstq+strideq*1]
-    pmovzxbw        m3, [dstq+strideq*2]
-    pmovzxbw        m4, [dstq+stride3q]
-    mova     [px+0*32], m1
-    mova     [px+1*32], m2
-    mova     [px+2*32], m3
-    mova     [px+3*32], m4
-%if %2 == 8
-    pmovzxbw        m1, [dst4q+strideq*0]
-    pmovzxbw        m2, [dst4q+strideq*1]
-    pmovzxbw        m3, [dst4q+strideq*2]
-    pmovzxbw        m4, [dst4q+stride3q]
-    mova     [px+4*32], m1
-    mova     [px+5*32], m2
-    mova     [px+6*32], m3
-    mova     [px+7*32], m4
-%endif
-    jmp .body_done
-.no_right:
-%if %1 == 4
-    movd           xm1, [dstq+strideq*0]
-    movd           xm2, [dstq+strideq*1]
-    movd           xm3, [dstq+strideq*2]
-    movd           xm4, [dstq+stride3q]
-    pmovzxbw       xm1, xm1
-    pmovzxbw       xm2, xm2
-    pmovzxbw       xm3, xm3
-    pmovzxbw       xm4, xm4
-    movq     [px+0*32], xm1
-    movq     [px+1*32], xm2
-    movq     [px+2*32], xm3
-    movq     [px+3*32], xm4
+%if %3 == 1 && %1 == 8
+    vpbroadcastd   m15, [pb_128]
+    pxor           m13, m13
 %else
-    pmovzxbw       xm1, [dstq+strideq*0]
-    pmovzxbw       xm2, [dstq+strideq*1]
-    pmovzxbw       xm3, [dstq+strideq*2]
-    pmovzxbw       xm4, [dstq+stride3q]
-    mova     [px+0*32], xm1
-    mova     [px+1*32], xm2
-    mova     [px+2*32], xm3
-    mova     [px+3*32], xm4
+    psrlw          m15, m14, 8              ; 0x0080
 %endif
-    movd [px+0*32+%1*2], xm14
-    movd [px+1*32+%1*2], xm14
-    movd [px+2*32+%1*2], xm14
-    movd [px+3*32+%1*2], xm14
-%if %2 == 8
- %if %1 == 4
-    movd           xm1, [dst4q+strideq*0]
-    movd           xm2, [dst4q+strideq*1]
-    movd           xm3, [dst4q+strideq*2]
-    movd           xm4, [dst4q+stride3q]
-    pmovzxbw       xm1, xm1
-    pmovzxbw       xm2, xm2
-    pmovzxbw       xm3, xm3
-    pmovzxbw       xm4, xm4
-    movq     [px+4*32], xm1
-    movq     [px+5*32], xm2
-    movq     [px+6*32], xm3
-    movq     [px+7*32], xm4
- %else
-    pmovzxbw       xm1, [dst4q+strideq*0]
-    pmovzxbw       xm2, [dst4q+strideq*1]
-    pmovzxbw       xm3, [dst4q+strideq*2]
-    pmovzxbw       xm4, [dst4q+stride3q]
-    mova     [px+4*32], xm1
-    mova     [px+5*32], xm2
-    mova     [px+6*32], xm3
-    mova     [px+7*32], xm4
+
+    ; prepare 16 bit buffer on the stack
+
+    ; read center/right/left/top/bottom from the input buffer then rewrite
+    ;   out of bounds regions with 0x8000
+%if %1 == 4
+    pmovzxbw        m1, [bufq-buf_stride*2-4]
+    pmovzxbw        m2, [bufq-buf_stride*1-4]
+    pmovzxbw        m3, [bufq+buf_stride*0-4]
+    pmovzxbw        m4, [bufq+buf_stride*1-4]
+    pxor            m1, m15
+    pxor            m2, m15
+    pxor            m3, m15
+    pxor            m4, m15
+    movu     [px-2*64-8], m1
+    movu     [px-1*64-8], m2
+    movu     [px+0*64-8], m3
+    movu     [px+1*64-8], m4
+    pmovzxbw        m1, [bufq+buf_stride*2-4]
+    pmovzxbw        m2, [bufq+buf_stride*3-4]
+    pmovzxbw        m3, [bufq+buf_stride*4-4]
+    pmovzxbw        m4, [bufq+buf_stride*5-4]
+    pxor            m1, m15
+    pxor            m2, m15
+    pxor            m3, m15
+    pxor            m4, m15
+    movu     [px+2*64-8], m1
+    movu     [px+3*64-8], m2
+    movu     [px+4*64-8], m3
+    movu     [px+5*64-8], m4
+ %if %2 == 8
+    pmovzxbw        m1, [bufq+buf_stride*6-4]
+    pmovzxbw        m2, [bufq+buf_stride*7-4]
+    pmovzxbw        m3, [bufq+buf_stride*8-4]
+    pmovzxbw        m4, [bufq+buf_stride*9-4]
+    pxor            m1, m15
+    pxor            m2, m15
+    pxor            m3, m15
+    pxor            m4, m15
+    movu     [px+6*64-8], m1
+    movu     [px+7*64-8], m2
+    movu     [px+8*64-8], m3
+    movu     [px+9*64-8], m4
  %endif
-    movd [px+4*32+%1*2], xm14
-    movd [px+5*32+%1*2], xm14
-    movd [px+6*32+%1*2], xm14
-    movd [px+7*32+%1*2], xm14
+%else
+ %if %3 == 1
+    pxor            m1, m15, [bufq-buf_stride*2-4]
+    pxor            m2, m15, [bufq-buf_stride*1-4]
+    pxor            m3, m15, [bufq+buf_stride*0-4]
+    pxor            m4, m15, [bufq+buf_stride*1-4]
+    pmovzxbw        m5, xm1
+    pmovzxbw        m6, xm2
+    punpcklbw       m1, m13
+    punpcklbw       m2, m13
+    movu         [px-2*64-8   ], m5
+    vextracti128 [px-2*64-8+32], m1, 1
+    movu         [px-1*64-8   ], m6
+    vextracti128 [px-1*64-8+32], m2, 1
+    pmovzxbw        m5, xm3
+    pmovzxbw        m6, xm4
+    punpcklbw       m3, m13
+    punpcklbw       m4, m13
+    movu         [px+0*64-8   ], m5
+    vextracti128 [px+0*64-8+32], m3, 1
+    movu         [px+1*64-8   ], m6
+    vextracti128 [px+1*64-8+32], m4, 1
+    pxor            m1, m15, [bufq+buf_stride*2-4]
+    pxor            m2, m15, [bufq+buf_stride*3-4]
+    pxor            m3, m15, [bufq+buf_stride*4-4]
+    pxor            m4, m15, [bufq+buf_stride*5-4]
+    pmovzxbw        m5, xm1
+    pmovzxbw        m6, xm2
+    punpcklbw       m1, m13
+    punpcklbw       m2, m13
+    movu         [px+2*64-8   ], m5
+    vextracti128 [px+2*64-8+32], m1, 1
+    movu         [px+3*64-8   ], m6
+    vextracti128 [px+3*64-8+32], m2, 1
+    pmovzxbw        m5, xm3
+    pmovzxbw        m6, xm4
+    punpcklbw       m3, m13
+    punpcklbw       m4, m13
+    movu         [px+4*64-8   ], m5
+    vextracti128 [px+4*64-8+32], m3, 1
+    movu         [px+5*64-8   ], m6
+    vextracti128 [px+5*64-8+32], m4, 1
+    pxor            m1, m15, [bufq+buf_stride*6-4]
+    pxor            m2, m15, [bufq+buf_stride*7-4]
+    pxor            m3, m15, [bufq+buf_stride*8-4]
+    pxor            m4, m15, [bufq+buf_stride*9-4]
+    pmovzxbw        m5, xm1
+    pmovzxbw        m6, xm2
+    punpcklbw       m1, m13
+    punpcklbw       m2, m13
+    movu         [px+6*64-8   ], m5
+    vextracti128 [px+6*64-8+32], m1, 1
+    movu         [px+7*64-8   ], m6
+    vextracti128 [px+7*64-8+32], m2, 1
+    pmovzxbw        m5, xm3
+    pmovzxbw        m6, xm4
+    punpcklbw       m3, m13
+    punpcklbw       m4, m13
+    movu         [px+8*64-8   ], m5
+    vextracti128 [px+8*64-8+32], m3, 1
+    movu         [px+9*64-8   ], m6
+    vextracti128 [px+9*64-8+32], m4, 1
+ %else
+    pmovzxbw        m1, [bufq-buf_stride*2-(%1/2)]
+    pmovzxbw        m2, [bufq-buf_stride*1-(%1/2)]
+    pmovzxbw        m3, [bufq+buf_stride*0-(%1/2)]
+    pmovzxbw        m4, [bufq+buf_stride*1-(%1/2)]
+    pxor            m1, m15
+    pxor            m2, m15
+    pxor            m3, m15
+    pxor            m4, m15
+    movu  [px-2*64-%1], m1
+    movu  [px-1*64-%1], m2
+    movu  [px+0*64-%1], m3
+    movu  [px+1*64-%1], m4
+    pmovzxbw        m1, [bufq+buf_stride*2-(%1/2)]
+    pmovzxbw        m2, [bufq+buf_stride*3-(%1/2)]
+    pmovzxbw        m3, [bufq+buf_stride*4-(%1/2)]
+    pmovzxbw        m4, [bufq+buf_stride*5-(%1/2)]
+    pxor            m1, m15
+    pxor            m2, m15
+    pxor            m3, m15
+    pxor            m4, m15
+    movu  [px+2*64-%1], m1
+    movu  [px+3*64-%1], m2
+    movu  [px+4*64-%1], m3
+    movu  [px+5*64-%1], m4
+    pmovzxbw        m1, [bufq+buf_stride*6-(%1/2)]
+    pmovzxbw        m2, [bufq+buf_stride*7-(%1/2)]
+    pmovzxbw        m3, [bufq+buf_stride*8-(%1/2)]
+    pmovzxbw        m4, [bufq+buf_stride*9-(%1/2)]
+    pxor            m1, m15
+    pxor            m2, m15
+    pxor            m3, m15
+    pxor            m4, m15
+    movu  [px+6*64-%1], m1
+    movu  [px+7*64-%1], m2
+    movu  [px+8*64-%1], m3
+    movu  [px+9*64-%1], m4
+ %endif
+%endif
+
+    test         edgeb, 2                   ; have_right
+    jnz .body_done
+
+    ; no right
+%if %3 == 1
+    movq [px+0*64+%1*4], xm14
+    movq [px+1*64+%1*4], xm14
+    movq [px+2*64+%1*4], xm14
+    movq [px+3*64+%1*4], xm14
+%else
+    movd [px+0*64+%1*2], xm14
+    movd [px+1*64+%1*2], xm14
+    movd [px+2*64+%1*2], xm14
+    movd [px+3*64+%1*2], xm14
+%endif
+%if %2 == 8
+ %if %3 == 1
+    movq [px+4*64+%1*4], xm14
+    movq [px+5*64+%1*4], xm14
+    movq [px+6*64+%1*4], xm14
+    movq [px+7*64+%1*4], xm14
+ %else
+    movd [px+4*64+%1*2], xm14
+    movd [px+5*64+%1*2], xm14
+    movd [px+6*64+%1*2], xm14
+    movd [px+7*64+%1*2], xm14
+ %endif
 %endif
 .body_done:
 
@@ -1314,153 +1217,147 @@ cglobal cdef_filter_%1x%2_8bpc, 5, 10, 0, dst, stride, left, top, bot, \
     test         edgeb, 1                    ; have_left
     jz .top_no_left
     test         edgeb, 2                    ; have_right
-    jz .top_no_right
-    pmovzxbw        m1, [topq+strideq*0-(%1/2)]
-    pmovzxbw        m2, [topq+strideq*1-(%1/2)]
-    movu  [px-2*32-%1], m1
-    movu  [px-1*32-%1], m2
-    jmp .top_done
-.top_no_right:
-    pmovzxbw        m1, [topq+strideq*0-%1]
-    pmovzxbw        m2, [topq+strideq*1-%1]
-    movu [px-2*32-%1*2], m1
-    movu [px-1*32-%1*2], m2
-    movd [px-2*32+%1*2], xm14
-    movd [px-1*32+%1*2], xm14
+    jnz .top_done
+    ; top no right
+%if %3 == 1
+    movq [px-2*64+%1*4], xm14
+    movq [px-1*64+%1*4], xm14
+%else
+    movd [px-2*64+%1*2], xm14
+    movd [px-1*64+%1*2], xm14
+%endif
     jmp .top_done
 .top_no_left:
     test         edgeb, 2                   ; have_right
     jz .top_no_left_right
-    pmovzxbw        m1, [topq+strideq*0]
-    pmovzxbw        m2, [topq+strideq*1]
-    mova   [px-2*32+0], m1
-    mova   [px-1*32+0], m2
-    movd   [px-2*32-4], xm14
-    movd   [px-1*32-4], xm14
+%if %3 == 1
+    movq   [px-2*64-8], xm14
+    movq   [px-1*64-8], xm14
+%else
+    movd   [px-2*64-4], xm14
+    movd   [px-1*64-4], xm14
+%endif
     jmp .top_done
 .top_no_left_right:
-%if %1 == 4
-    movd           xm1, [topq+strideq*0]
-    pinsrd         xm1, [topq+strideq*1], 1
-    pmovzxbw       xm1, xm1
-    movq   [px-2*32+0], xm1
-    movhps [px-1*32+0], xm1
+%if %3 == 1
+    movq    [px-2*64-8], xm14
+    movq    [px-1*64-8], xm14
+    movq [px-2*64+%1*4], xm14
+    movq [px-1*64+%1*4], xm14
 %else
-    pmovzxbw       xm1, [topq+strideq*0]
-    pmovzxbw       xm2, [topq+strideq*1]
-    mova   [px-2*32+0], xm1
-    mova   [px-1*32+0], xm2
+    movd    [px-2*64-4], xm14
+    movd    [px-1*64-4], xm14
+    movd [px-2*64+%1*2], xm14
+    movd [px-1*64+%1*2], xm14
 %endif
-    movd   [px-2*32-4], xm14
-    movd   [px-1*32-4], xm14
-    movd [px-2*32+%1*2], xm14
-    movd [px-1*32+%1*2], xm14
     jmp .top_done
 .no_top:
-    movu   [px-2*32-%1], m14
-    movu   [px-1*32-%1], m14
+%if %3 == 1
+    movu [px-2*64-8], m14
+    movu [px-1*64-8], m14
+%if %1 == 8
+    movu [px-2*64-8+32], xm14
+    movu [px-1*64-8+32], xm14
+%endif
+%else
+    movu   [px-2*64-%1], m14
+    movu   [px-1*64-%1], m14
+%endif
 .top_done:
 
     ; left
     test         edgeb, 1                   ; have_left
-    jz .no_left
-    pmovzxbw       xm1, [leftq+ 0]
-%if %2 == 8
-    pmovzxbw       xm2, [leftq+ 8]
-%endif
-    movd   [px+0*32-4], xm1
-    pextrd [px+1*32-4], xm1, 1
-    pextrd [px+2*32-4], xm1, 2
-    pextrd [px+3*32-4], xm1, 3
-%if %2 == 8
-    movd   [px+4*32-4], xm2
-    pextrd [px+5*32-4], xm2, 1
-    pextrd [px+6*32-4], xm2, 2
-    pextrd [px+7*32-4], xm2, 3
-%endif
-    jmp .left_done
+    jnz .left_done
 .no_left:
-    movd   [px+0*32-4], xm14
-    movd   [px+1*32-4], xm14
-    movd   [px+2*32-4], xm14
-    movd   [px+3*32-4], xm14
+%if %3 == 1
+    movq   [px+0*64-8], xm14
+    movq   [px+1*64-8], xm14
+    movq   [px+2*64-8], xm14
+    movq   [px+3*64-8], xm14
+%else
+    movd   [px+0*64-4], xm14
+    movd   [px+1*64-4], xm14
+    movd   [px+2*64-4], xm14
+    movd   [px+3*64-4], xm14
+%endif
 %if %2 == 8
-    movd   [px+4*32-4], xm14
-    movd   [px+5*32-4], xm14
-    movd   [px+6*32-4], xm14
-    movd   [px+7*32-4], xm14
+%if %3 == 1
+    movq   [px+4*64-8], xm14
+    movq   [px+5*64-8], xm14
+    movq   [px+6*64-8], xm14
+    movq   [px+7*64-8], xm14
+%else
+    movd   [px+4*64-4], xm14
+    movd   [px+5*64-4], xm14
+    movd   [px+6*64-4], xm14
+    movd   [px+7*64-4], xm14
+%endif
 %endif
 .left_done:
 
     ; bottom
- DEFINE_ARGS dst, stride, _, _, bot, pri, sec, stride3, _, edge
     test         edgeb, 8                   ; have_bottom
     jz .no_bottom
     test         edgeb, 1                   ; have_left
     jz .bottom_no_left
     test         edgeb, 2                   ; have_right
-    jz .bottom_no_right
-    pmovzxbw        m1, [botq+strideq*0-(%1/2)]
-    pmovzxbw        m2, [botq+strideq*1-(%1/2)]
-    movu   [px+(%2+0)*32-%1], m1
-    movu   [px+(%2+1)*32-%1], m2
-    jmp .bottom_done
-.bottom_no_right:
-    pmovzxbw        m1, [botq+strideq*0-%1]
-    pmovzxbw        m2, [botq+strideq*1-%1]
-    movu  [px+(%2+0)*32-%1*2], m1
-    movu  [px+(%2+1)*32-%1*2], m2
-%if %1 == 8
-    movd  [px+(%2-1)*32+%1*2], xm14                ; overwritten by previous movu
+    jnz .bottom_done
+    ; bottom_no_right
+%if %3 == 1
+    movq  [px+(%2+0)*64+%1*4], xm14
+    movq  [px+(%2+1)*64+%1*4], xm14
+%else
+    movd  [px+(%2+0)*64+%1*2], xm14
+    movd  [px+(%2+1)*64+%1*2], xm14
 %endif
-    movd  [px+(%2+0)*32+%1*2], xm14
-    movd  [px+(%2+1)*32+%1*2], xm14
     jmp .bottom_done
 .bottom_no_left:
     test          edgeb, 2                  ; have_right
     jz .bottom_no_left_right
-    pmovzxbw        m1, [botq+strideq*0]
-    pmovzxbw        m2, [botq+strideq*1]
-    mova   [px+(%2+0)*32+0], m1
-    mova   [px+(%2+1)*32+0], m2
-    movd   [px+(%2+0)*32-4], xm14
-    movd   [px+(%2+1)*32-4], xm14
+%if %3 == 1
+    movq   [px+(%2+0)*64-8], xm14
+    movq   [px+(%2+1)*64-8], xm14
+%else
+    movd   [px+(%2+0)*64-4], xm14
+    movd   [px+(%2+1)*64-4], xm14
+%endif
     jmp .bottom_done
 .bottom_no_left_right:
-%if %1 == 4
-    movd           xm1, [botq+strideq*0]
-    pinsrd         xm1, [botq+strideq*1], 1
-    pmovzxbw       xm1, xm1
-    movq   [px+(%2+0)*32+0], xm1
-    movhps [px+(%2+1)*32+0], xm1
+%if %3 == 1
+    movq    [px+(%2+0)*64-8], xm14
+    movq    [px+(%2+1)*64-8], xm14
+    movq [px+(%2+0)*64+%1*4], xm14
+    movq [px+(%2+1)*64+%1*4], xm14
 %else
-    pmovzxbw       xm1, [botq+strideq*0]
-    pmovzxbw       xm2, [botq+strideq*1]
-    mova   [px+(%2+0)*32+0], xm1
-    mova   [px+(%2+1)*32+0], xm2
+    movd    [px+(%2+0)*64-4], xm14
+    movd    [px+(%2+1)*64-4], xm14
+    movd [px+(%2+0)*64+%1*2], xm14
+    movd [px+(%2+1)*64+%1*2], xm14
 %endif
-    movd   [px+(%2+0)*32-4], xm14
-    movd   [px+(%2+1)*32-4], xm14
-    movd  [px+(%2+0)*32+%1*2], xm14
-    movd  [px+(%2+1)*32+%1*2], xm14
     jmp .bottom_done
 .no_bottom:
-    movu   [px+(%2+0)*32-%1], m14
-    movu   [px+(%2+1)*32-%1], m14
+%if %3 == 1
+    movu [px+(%2+0)*64-8], m14
+    movu [px+(%2+1)*64-8], m14
+%if %1 == 8
+    movu [px+(%2+0)*64-8+32], xm14
+    movu [px+(%2+1)*64-8+32], xm14
+%endif
+%else
+    movu   [px+(%2+0)*64-%1], m14
+    movu   [px+(%2+1)*64-%1], m14
+%endif
 .bottom_done:
 
     ; actual filter
- INIT_YMM avx2
- DEFINE_ARGS dst, stride, _, pridmp, damping, pri, secdmp, stride3, zero
+ DEFINE_ARGS dst, stride, pridmp, zero, pri, secdmp, dir, damping
 %undef edged
     ; register to shuffle values into after packing
     vbroadcasti128 m12, [shufb_lohi]
 
-    mov       dampingd, r8m
+    movifnidn dampingd, dampingm
     xor          zerod, zerod
-    movifnidn     prid, prim
     sub       dampingd, 31
-    movifnidn  secdmpd, secdmpm
     test          prid, prid
     jz .border_sec_only
     movd           xm0, prid
@@ -1475,111 +1372,557 @@ cglobal cdef_filter_%1x%2_8bpc, 5, 10, 0, dst, stride, left, top, bot, \
     add        secdmpd, dampingd
     mov        [rsp+8], secdmpq                 ; sec_shift
 
- DEFINE_ARGS dst, stride, _, pridmp, table, pri, secdmp, stride3
+ DEFINE_ARGS dst, stride, pridmp, zero, pri, secdmp, dir, table
     lea         tableq, [tap_table]
-    vpbroadcastb   m13, [tableq+pridmpq]        ; pri_shift_mask
-    vpbroadcastb   m14, [tableq+secdmpq]        ; sec_shift_mask
+    vpbroadcastd   m13, [tableq+pridmpq*4]      ; pri_shift_mask
+    vpbroadcastd   m14, [tableq+secdmpq*4]      ; sec_shift_mask
 
     ; pri/sec_taps[k] [4 total]
- DEFINE_ARGS dst, stride, _, dir, table, pri, sec, stride3
+ DEFINE_ARGS dst, stride, _, _, tap, _, dir, table
     vpbroadcastb    m0, xm0                     ; pri_strength
     vpbroadcastb    m1, xm1                     ; sec_strength
-    and           prid, 1
-    lea           priq, [tableq+priq*2+8]       ; pri_taps
-    lea           secq, [tableq+12]             ; sec_taps
+    and           tapd, 1
+    ; pri_taps/sec_taps
+    lea           tapq, [tableq+tapq*4+tap_weights-tap_table]
 
-    BORDER_PREP_REGS %1, %2
-%if %1*%2*2/mmsize > 1
+    BORDER_PREP_REGS %1, %2, %3
 .border_v_loop:
-%endif
-    BORDER_LOAD_BLOCK %1, %2, 1
+    BORDER_LOAD_BLOCK %1, %2, %3, 1
 .border_k_loop:
-    vpbroadcastb    m2, [priq+kq]               ; pri_taps
-    vpbroadcastb    m3, [secq+kq]               ; sec_taps
-    ACCUMULATE_TAP_WORD 0*2, [rsp+0], m13, m0, m2, %1, 1
-    ACCUMULATE_TAP_WORD 2*2, [rsp+8], m14, m1, m3, %1, 1
-    ACCUMULATE_TAP_WORD 6*2, [rsp+8], m14, m1, m3, %1, 1
+    vpbroadcastb    m2, [tapq+kq]               ; pri_taps
+    vpbroadcastb    m3, [tapq+kq+2]             ; sec_taps
+    ACCUMULATE_TAP_WORD 0*2, [rsp+0], m13, m0, m2, %1, %2, %3, 1
+    ACCUMULATE_TAP_WORD 2*2, [rsp+8], m14, m1, m3, %1, %2, %3, 1
+    ACCUMULATE_TAP_WORD 6*2, [rsp+8], m14, m1, m3, %1, %2, %3, 1
     dec             kq
     jge .border_k_loop
 
     vpbroadcastd   m10, [pw_2048]
-    BORDER_ADJUST_PIXEL %1, m10, 1
-%if %1*%2*2/mmsize > 1
+%if %3 == 1
+    vbroadcasti128  m2, [pb_deinterleave]
+%endif
+    BORDER_ADJUST_PIXEL %1, %2, %3, m10, xm2, 1
+%if %3 == 1
+ %define vloop_lines (mmsize/(%1*4))
+    lea          dst1q, [dst1q+strideq*vloop_lines]
+    lea          dst2q, [dst2q+strideq*vloop_lines]
+%else
  %define vloop_lines (mmsize/(%1*2))
     lea           dstq, [dstq+strideq*vloop_lines]
-    add           stkq, 32*vloop_lines
+%endif
+    add           stkq, 64*vloop_lines
     dec             hd
     jg .border_v_loop
-%endif
     RET
 
 .border_pri_only:
- DEFINE_ARGS dst, stride, _, pridmp, table, pri, _, stride3
+ DEFINE_ARGS dst, stride, pridmp, _, pri, _, dir, table
     lea         tableq, [tap_table]
-    vpbroadcastb   m13, [tableq+pridmpq]        ; pri_shift_mask
- DEFINE_ARGS dst, stride, _, dir, table, pri, _, stride3
+    vpbroadcastd   m13, [tableq+pridmpq*4]      ; pri_shift_mask
+ DEFINE_ARGS dst, stride, pridmp, _, tap, _, dir, table
     vpbroadcastb    m0, xm0                     ; pri_strength
-    and           prid, 1
-    lea           priq, [tableq+priq*2+8]       ; pri_taps
-    BORDER_PREP_REGS %1, %2
+    and           tapd, 1
+    ; pri_taps
+    lea           tapq, [tableq+tapq*4+tap_weights-tap_table]
+    BORDER_PREP_REGS %1, %2, %3
     vpbroadcastd    m1, [pw_2048]
-%if %1*%2*2/mmsize > 1
-.border_pri_v_loop:
+%if %3 == 1
+    vbroadcasti128  m3, [pb_deinterleave]
 %endif
-    BORDER_LOAD_BLOCK %1, %2
+.border_pri_v_loop:
+    BORDER_LOAD_BLOCK %1, %2, %3
 .border_pri_k_loop:
-    vpbroadcastb    m2, [priq+kq]               ; pri_taps
-    ACCUMULATE_TAP_WORD 0*2, [rsp+0], m13, m0, m2, %1
+    vpbroadcastb    m2, [tapq+kq]               ; pri_taps
+    ACCUMULATE_TAP_WORD 0*2, [rsp+0], m13, m0, m2, %1, %2, %3
     dec             kq
     jge .border_pri_k_loop
-    BORDER_ADJUST_PIXEL %1, m1
-%if %1*%2*2/mmsize > 1
+    BORDER_ADJUST_PIXEL %1, %2, %3, m1, xm3
+%if %3 == 1
+ %define vloop_lines (mmsize/(%1*4))
+    lea          dst1q, [dst1q+strideq*vloop_lines]
+    lea          dst2q, [dst2q+strideq*vloop_lines]
+%else
  %define vloop_lines (mmsize/(%1*2))
     lea           dstq, [dstq+strideq*vloop_lines]
-    add           stkq, 32*vloop_lines
+%endif
+    add           stkq, 64*vloop_lines
     dec             hd
     jg .border_pri_v_loop
-%endif
     RET
 
 .border_sec_only:
- DEFINE_ARGS dst, stride, _, _, damping, _, secdmp, stride3
+ DEFINE_ARGS dst, stride, _, _, _, secdmp, dir, damping
     movd           xm1, secdmpd
     lzcnt      secdmpd, secdmpd
     add        secdmpd, dampingd
     mov        [rsp+8], secdmpq                 ; sec_shift
- DEFINE_ARGS dst, stride, _, _, table, _, secdmp, stride3
+ DEFINE_ARGS dst, stride, _, _, _, secdmp, dir, table
     lea         tableq, [tap_table]
-    vpbroadcastb   m14, [tableq+secdmpq]        ; sec_shift_mask
- DEFINE_ARGS dst, stride, _, dir, table, _, sec, stride3
+    vpbroadcastd   m14, [tableq+secdmpq*4]      ; sec_shift_mask
+ DEFINE_ARGS dst, stride, _, _, tap, _, dir, table
     vpbroadcastb    m1, xm1                     ; sec_strength
-    lea           secq, [tableq+12]             ; sec_taps
-    BORDER_PREP_REGS %1, %2
+    ; sec_taps
+    lea           tapq, [tableq+2+tap_weights-tap_table]
+    BORDER_PREP_REGS %1, %2, %3
     vpbroadcastd    m0, [pw_2048]
-%if %1*%2*2/mmsize > 1
-.border_sec_v_loop:
+%if %3 == 1
+    vbroadcasti128  m2, [pb_deinterleave]
 %endif
-    BORDER_LOAD_BLOCK %1, %2
+.border_sec_v_loop:
+    BORDER_LOAD_BLOCK %1, %2, %3
 .border_sec_k_loop:
-    vpbroadcastb    m3, [secq+kq]               ; sec_taps
-    ACCUMULATE_TAP_WORD 2*2, [rsp+8], m14, m1, m3, %1
-    ACCUMULATE_TAP_WORD 6*2, [rsp+8], m14, m1, m3, %1
+    vpbroadcastb    m3, [tapq+kq]               ; sec_taps
+    ACCUMULATE_TAP_WORD 2*2, [rsp+8], m14, m1, m3, %1, %2, %3
+    ACCUMULATE_TAP_WORD 6*2, [rsp+8], m14, m1, m3, %1, %2, %3
     dec             kq
     jge .border_sec_k_loop
-    BORDER_ADJUST_PIXEL %1, m0
-%if %1*%2*2/mmsize > 1
+    BORDER_ADJUST_PIXEL %1, %2, %3, m0, xm2
+%if %3 == 1
+ %define vloop_lines (mmsize/(%1*4))
+    lea          dst1q, [dst1q+strideq*vloop_lines]
+    lea          dst2q, [dst2q+strideq*vloop_lines]
+%else
  %define vloop_lines (mmsize/(%1*2))
     lea           dstq, [dstq+strideq*vloop_lines]
-    add           stkq, 32*vloop_lines
+%endif
+    add           stkq, 64*vloop_lines
     dec             hd
     jg .border_sec_v_loop
-%endif
     RET
 %endmacro
 
-CDEF_FILTER 8, 8
-CDEF_FILTER 4, 8
-CDEF_FILTER 4, 4
+INIT_YMM avx2
+cglobal cdef_prep_y_8bpc, 7, 9, 5, buf, src, stride, top, bot, num_blocks, \
+                                   edge, edgejmp, table
+%define buf_stride CDEF_BUFFER_Y_STRIDE
+; Start of the first complete block in buf.
+%define bufp (bufq+8)
+    vpbroadcastd    m4, [pb_128]
+    ; If less than 8 cdef blocks left in the frame, copy block by block
+    test   num_blocksd, 8
+    jz .slow_path
+    mov          edged, edged
+    lea         tableq, [cdef_prep_y_8bpc_jmptable]
+    movsxd    edgejmpq, [tableq+edgeq*4]
+    add       edgejmpq, tableq
+
+    test         edgeb, 4
+    jz .skip_top
+
+    call edgejmpq
+.skip_top:
+    add           bufq, buf_stride*2
+
+    mov           topq, srcq
+ DEFINE_ARGS buf, h, stride, src, bot, num_blocks, edge, edgejmp
+    mov             hd, 4
+.loop:
+    call edgejmpq
+    add           bufq, buf_stride*2
+    lea           srcq, [srcq+strideq*2]
+    dec             hd
+    jg .loop
+
+    test         edgeb, 8
+    jz .skip_bottom
+
+    mov           srcq, botq
+    call edgejmpq
+.skip_bottom:
+    RET
+
+ DEFINE_ARGS buf, _, stride, src, bot, num_blocks, edge, edgejmp
+.left_skip_full:
+    movd           xm0, [srcq        -4]
+    movd           xm1, [srcq+strideq-4]
+    pxor           xm0, xm4
+    pxor           xm1, xm4
+    movd [bufp           -4], xm0
+    movd [bufp+buf_stride-4], xm1
+    pxor            m0, m4, [srcq           ]
+    pxor            m1, m4, [srcq        +32]
+    pxor            m2, m4, [srcq+strideq   ]
+    pxor            m3, m4, [srcq+strideq+32]
+    movu [bufp              ], m0
+    movu [bufp           +32], m1
+    movu [bufp+buf_stride   ], m2
+    movu [bufp+buf_stride+32], m3
+    movd           xm0, [srcq        +64]
+    movd           xm1, [srcq+strideq+64]
+    pxor           xm0, xm4
+    pxor           xm1, xm4
+    movd [bufp           +64], xm0
+    movd [bufp+buf_stride+64], xm1
+    ret
+.full:
+    movd           xm0, [bufp           +60]
+    movd           xm1, [bufp+buf_stride+60]
+    movd [bufp           -4], xm0
+    movd [bufp+buf_stride-4], xm1
+.no_left:
+    pxor            m0, m4, [srcq           ]
+    pxor            m1, m4, [srcq        +32]
+    pxor            m2, m4, [srcq+strideq   ]
+    pxor            m3, m4, [srcq+strideq+32]
+    movu [bufp              ], m0
+    movu [bufp           +32], m1
+    movu [bufp+buf_stride   ], m2
+    movu [bufp+buf_stride+32], m3
+    movd           xm0, [srcq        +64]
+    movd           xm1, [srcq+strideq+64]
+    pxor           xm0, xm4
+    pxor           xm1, xm4
+    movd [bufp           +64], xm0
+    movd [bufp+buf_stride+64], xm1
+    ret
+
+.left_skip_no_right:
+    movd           xm0, [srcq        -4]
+    movd           xm1, [srcq+strideq-4]
+    pxor           xm0, xm4
+    pxor           xm1, xm4
+    movd [bufp           -4], xm0
+    movd [bufp+buf_stride-4], xm1
+    jmp .no_left_right
+.no_right:
+    movd           xm0, [bufp           +60]
+    movd           xm1, [bufp+buf_stride+60]
+    movd [bufp           -4], xm0
+    movd [bufp+buf_stride-4], xm1
+.no_left_right:
+    pxor            m0, m4, [srcq           ]
+    pxor            m1, m4, [srcq        +32]
+    pxor            m2, m4, [srcq+strideq   ]
+    pxor            m3, m4, [srcq+strideq+32]
+    movu [bufp              ], m0
+    movu [bufp           +32], m1
+    movu [bufp+buf_stride   ], m2
+    movu [bufp+buf_stride+32], m3
+    ret
+
+.slow_path:
+    PUSH r9
+DEFINE_ARGS buf, src, stride, top, bot, num_blocks, edge, w, src_backup, \
+            buf_backup
+    test         edgeb, 4
+    jz .slow_path_skip_top
+    call .slow_path_row
+    jmp .slow_path_top_done
+.slow_path_skip_top:
+    add           bufq, buf_stride*2
+.slow_path_top_done:
+    mov           topq, srcq
+    call .slow_path_row
+    call .slow_path_row
+    call .slow_path_row
+    call .slow_path_row
+
+    test         edgeb, 8
+    jz .slow_path_skip_bottom
+
+    mov           topq, botq
+    call .slow_path_row
+.slow_path_skip_bottom:
+    POP r9
+    RET
+
+.slow_path_row:
+    DEFINE_ARGS buf, _, stride, src, bot, num_blocks, edge, w, src_backup, \
+                buf_backup
+    mov    src_backupq, srcq
+    mov    buf_backupq, bufq
+    mov             wd, num_blocksd
+    test         edgeb, 1
+    jz .slow_path_horz_loop
+    test         edgeb, 16
+    jnz .slow_path_left_skip
+    movd           xm0, [bufp           +60]
+    movd           xm1, [bufp+buf_stride+60]
+
+    movd [bufp           -4], xm0
+    movd [bufp+buf_stride-4], xm1
+    jmp .slow_path_horz_loop
+.slow_path_left_skip:
+    movd           xm0, [srcq        -4]
+    movd           xm1, [srcq+strideq-4]
+    pxor           xm0, xm4
+    pxor           xm1, xm4
+    movd [bufp           -4], xm0
+    movd [bufp+buf_stride-4], xm1
+
+.slow_path_horz_loop:
+    movq           xm0, [srcq]
+    movq           xm1, [srcq+strideq]
+    pxor           xm0, xm4
+    pxor           xm1, xm4
+    movq [bufp           ], xm0
+    movq [bufp+buf_stride], xm1
+    add           srcq, 8
+    add           bufq, 8
+    dec             wd
+    jge .slow_path_horz_loop
+    lea           srcq, [src_backupq+strideq*2]
+    lea           bufq, [buf_backupq+buf_stride*2]
+    ret
+
+%macro CDEF_PREP_UV 3 ; w, h, chroma subsampling name
+INIT_YMM avx2
+cglobal cdef_prep_uv_%3_8bpc, 7, 9, 7, buf, src, stride, top, bot, \
+                                       num_blocks, edge, edgejmp, table
+%define buf_stride (CDEF_BUFFER_Y_STRIDE * 2 * %1 / 8)
+; Start of the first complete block in buf.
+%define bufp (bufq+8)
+    vpbroadcastd    m6, [pb_128]
+    ; If less than 8 cdef blocks left in the frame, copy block by block
+    test   num_blocksd, 8
+    jz .slow_path
+    mov          edged, edged
+    lea         tableq, [cdef_prep_uv_%3_8bpc_jmptable]
+    movsxd    edgejmpq, [tableq+edgeq*4]
+    add       edgejmpq, tableq
+    test         edgeb, 4
+    jz .skip_top
+
+ DEFINE_ARGS buf, src, stride, top1, bot, num_blocks, edge, edgejmp, top2
+    mov          top2q, [top1q+gprsize]
+    mov          top1q, [top1q]
+    call edgejmpq
+.skip_top:
+    add           bufq, buf_stride*2
+
+%if %2 == 4
+ DEFINE_ARGS buf, src, stride, src1, bot, num_blocks, edge, edgejmp, src2
+    mov          src1q, [srcq]
+    mov          src2q, [srcq+gprsize]
+    call edgejmpq
+    add           bufq, buf_stride*2
+    lea          src1q, [src1q+strideq*2]
+    lea          src2q, [src2q+strideq*2]
+    call edgejmpq
+    add           bufq, buf_stride*2
+%else
+ DEFINE_ARGS buf, src, stride, src1, bot, num_blocks, edge, edgejmp, src2
+    mov          src1q, [srcq]
+    mov          src2q, [srcq+gprsize]
+ DEFINE_ARGS buf, h, stride, src1, bot, num_blocks, edge, edgejmp, src2
+    mov             hd, %2 / 2
+.loop:
+    call edgejmpq
+    add           bufq, buf_stride*2
+    lea          src1q, [src1q+strideq*2]
+    lea          src2q, [src2q+strideq*2]
+    dec             hd
+    jg .loop
+%endif
+
+    test         edgeb, 8
+    jz .skip_bottom
+
+    mov          src1q, [botq        ]
+    mov          src2q, [botq+gprsize]
+    call edgejmpq
+.skip_bottom:
+    RET
+
+%macro LEFT 2
+    movd           xm0, [bufp           +16*%1-4]
+    movd           xm1, [bufp+buf_stride+16*%1-4]
+    movd [bufp           -4], xm0
+    movd [bufp+buf_stride-4], xm1
+%endmacro
+
+%macro LEFT_SKIP 2
+    movd           xm0, [src1q        -4]
+    movd           xm1, [src2q        -4]
+    movd           xm2, [src1q+strideq-4]
+    movd           xm3, [src2q+strideq-4]
+    punpcklbw      xm0, xm1
+    punpcklbw      xm2, xm3
+    pxor           xm0, xm6
+    pxor           xm2, xm6
+    movq [bufp           -8], xm0
+    movq [bufp+buf_stride-8], xm2
+%endmacro
+
+%macro MIDDLE 2
+    pxor            m0, m6, [src1q        ]
+    pxor            m1, m6, [src2q        ]
+    pxor            m2, m6, [src1q+strideq]
+    pxor            m3, m6, [src2q+strideq]
+    punpckhbw       m4, m0, m1 ; columns: [8,15], [24-31]
+    punpcklbw       m0, m1     ; columns: [0,7],  [16,23]
+    punpckhbw       m5, m2, m3
+    punpcklbw       m2, m3
+    vperm2i128      m1, m0, m4, 0x31
+    vinserti128     m0, xm4, 1
+    vperm2i128      m3, m2, m5, 0x31
+    vinserti128     m2, xm5, 1
+    movu [bufp              ], m0
+    movu [bufp           +32], m1
+    movu [bufp+buf_stride   ], m2
+    movu [bufp+buf_stride+32], m3
+%if %1 == 8
+    pxor            m0, m6, [src1q        +32]
+    pxor            m1, m6, [src2q        +32]
+    pxor            m2, m6, [src1q+strideq+32]
+    pxor            m3, m6, [src2q+strideq+32]
+    punpckhbw       m4, m0, m1 ; columns: [8,15], [24-31]
+    punpcklbw       m0, m1     ; columns: [0,7],  [16,23]
+    punpckhbw       m5, m2, m3
+    punpcklbw       m2, m3
+    vperm2i128      m1, m0, m4, 0x31
+    vinserti128     m0, xm4, 1
+    vperm2i128      m3, m2, m5, 0x31
+    vinserti128     m2, xm5, 1
+    movu [bufp           +64], m0
+    movu [bufp           +96], m1
+    movu [bufp+buf_stride+64], m2
+    movu [bufp+buf_stride+96], m3
+%endif
+%endmacro
+
+%macro RIGHT 2
+    movd           xm0, [src1q        +8*%1]
+    movd           xm1, [src2q        +8*%1]
+    movd           xm2, [src1q+strideq+8*%1]
+    movd           xm3, [src2q+strideq+8*%1]
+    punpcklbw      xm0, xm1
+    punpcklbw      xm2, xm3
+    pxor           xm0, xm6
+    pxor           xm2, xm6
+    movd [bufp           +16*%1], xm0
+    movd [bufp+buf_stride+16*%1], xm2
+%endmacro
+
+; Share 420 routines with 422
+%if !(%1 == 4 && %2 == 8)
+ DEFINE_ARGS buf, _, stride, src1, bot, num_blocks, edge, edgejmp, src2
+
+.left_skip_full:
+LEFT_SKIP %1, %2
+MIDDLE %1, %2
+RIGHT %1, %2
+    ret
+
+.full:
+LEFT %1, %2
+.no_left:
+MIDDLE %1, %2
+RIGHT %1, %2
+    ret
+
+.left_skip_no_right:
+LEFT_SKIP %1, %2
+    jmp .no_left_right
+.no_right:
+LEFT %1, %2
+.no_left_right:
+MIDDLE %1, %2
+    ret
+%endif
+
+.slow_path:
+    PUSH r9
+    PUSH r10
+    PUSH r11
+DEFINE_ARGS buf, src, stride, top1, bot, num_blocks, edge, w, top2, \
+            src1_backup, src2_backup, buf_backup
+    test         edgeb, 4
+    jz .slow_path_skip_top
+    mov          top2q, [top1q+gprsize]
+    mov          top1q, [top1q]
+DEFINE_ARGS buf, src, stride, src1, bot, num_blocks, edge, w, src2, \
+            src1_backup, src2_backup, buf_backup
+    call .slow_path_row
+    jmp .slow_path_top_done
+.slow_path_skip_top:
+    add           bufq, buf_stride*2
+.slow_path_top_done:
+    mov          src1q, [srcq]
+    mov          src2q, [srcq+gprsize]
+
+    call .slow_path_row
+    call .slow_path_row
+%if %2 == 8
+    call .slow_path_row
+    call .slow_path_row
+%endif
+
+    test         edgeb, 8
+    jz .slow_path_skip_bottom
+
+    mov          src1q, [botq]
+    mov          src2q, [botq+gprsize]
+    call .slow_path_row
+.slow_path_skip_bottom:
+    POP r11
+    POP r10
+    POP r9
+    RET
+
+.slow_path_row:
+    DEFINE_ARGS buf, _, stride, src1, bot, num_blocks, edge, w, src2, \
+                src1_backup, src2_backup, buf_backup
+    mov   src1_backupq, src1q
+    mov   src2_backupq, src2q
+    mov    buf_backupq, bufq
+    mov             wd, num_blocksd
+    test         edgeb, 1
+    jz .slow_path_horz_loop
+    test         edgeb, 16
+    jnz .slow_path_left_skip
+    LEFT %1, %2
+    jmp .slow_path_horz_loop
+.slow_path_left_skip:
+    LEFT_SKIP %1, %2
+
+.slow_path_horz_loop:
+%if %1 == 4
+    movd           xm0, [src1q        ]
+    movd           xm1, [src2q        ]
+    movd           xm2, [src1q+strideq]
+    movd           xm3, [src2q+strideq]
+    punpcklbw      xm0, xm1
+    punpcklbw      xm2, xm3
+    pxor           xm0, xm6
+    pxor           xm2, xm6
+    movq [bufp             ], xm0
+    movq [bufp+buf_stride*1], xm2
+%else
+    movq           xm0, [src1q        ]
+    movq           xm1, [src2q        ]
+    movq           xm2, [src1q+strideq]
+    movq           xm3, [src2q+strideq]
+    punpcklbw      xm0, xm1
+    punpcklbw      xm2, xm3
+    pxor           xm0, xm6
+    pxor           xm2, xm6
+    movu [bufp             ], xm0
+    movu [bufp+buf_stride*1], xm2
+%endif
+    add          src1q, %1
+    add          src2q, %1
+    add           bufq, %1*2
+    dec             wd
+    jge .slow_path_horz_loop
+    lea          src1q, [src1_backupq+strideq*2]
+    lea          src2q, [src2_backupq+strideq*2]
+    lea           bufq, [buf_backupq+buf_stride*2]
+    ret
+
+%unmacro LEFT 2
+%unmacro LEFT_SKIP 2
+%unmacro MIDDLE 2
+%unmacro RIGHT 2
+%endmacro
+
+CDEF_FILTER 8, 8, 0
+CDEF_PREP_UV 8, 8, 444
+CDEF_FILTER 8, 8, 1
+CDEF_PREP_UV 4, 8, 422
+CDEF_FILTER 4, 8, 1
+CDEF_PREP_UV 4, 4, 420
+CDEF_FILTER 4, 4, 1
 
 INIT_YMM avx2
 cglobal cdef_dir_8bpc, 3, 4, 6, src, stride, var, stride3

@@ -236,7 +236,6 @@ if is_asm_enabled
             'ppc/cpu.c',
         )
         libdav1d_arch_tmpl_sources += files(
-            'ppc/cdef_tmpl.c',
             'ppc/looprestoration_tmpl.c',
         )
     endif

@@ -34,6 +34,101 @@
 #include "src/cdef.h"
 #include "src/tables.h"
 
+static ptrdiff_t get_buffer_stride_y(void) {
+    return 8 * CDEF_BUFFER_UNITS + 4;
+}
+
+static ptrdiff_t get_buffer_stride_uv(int ss_hor) {
+    // Each stride of buffer holds a rows from each source.
+    return 2 * ((8 >> ss_hor) * CDEF_BUFFER_UNITS + 4);
+}
+
+static void cdef_prep_c(pixel *buf, const ptrdiff_t buf_stride,
+                        const pixel *src, ptrdiff_t src_stride,
+                        const pixel *top, const pixel *bottom,
+                        int num_units, enum CdefEdgeFlags edges,
+                        int ss_hor, int ss_ver) {
+    assert(num_units <= CDEF_BUFFER_UNITS);
+    assert(num_units == CDEF_BUFFER_UNITS || !(edges & CDEF_HAVE_RIGHT));
+    src_stride = PXSTRIDE(src_stride);
+    int x_end = (num_units * 8 >> ss_hor) + ((edges & CDEF_HAVE_RIGHT) ? 2 : 0);
+    int h = 8 >> ss_ver;
+    if (edges & CDEF_HAVE_LEFT) {
+        if (edges & CDEF_LEFT_SKIP) {
+            if (edges & CDEF_HAVE_TOP)
+                for (int y = -2; y < 0; y++)
+                    pixel_copy(buf + y * buf_stride - 2,
+                               top + (y + 2) * src_stride - 2, 2);
+            for (int y = 0; y < h; y++)
+                pixel_copy(buf + y * buf_stride - 2,
+                           src + y * src_stride - 2, 2);
+            if (edges & CDEF_HAVE_BOTTOM)
+                for (int y = h; y < h + 2; y++)
+                    pixel_copy(buf + y * buf_stride - 2,
+                               bottom + (y - h) * src_stride - 2, 2);
+        } else {
+            // Copy from the existing buf.
+            pixel *buffer_end = buf + (CDEF_BUFFER_UNITS * 8 >> ss_hor) - 2;
+            int start = (edges & CDEF_HAVE_TOP) ? -2 : 0;
+            int end = h + ((edges & CDEF_HAVE_BOTTOM) ? 2 : 0);
+            for (int y = start; y < end; y++)
+                pixel_copy(buf + y * buf_stride - 2,
+                           buffer_end + y * buf_stride, 2);
+        }
+    }
+    if (edges & CDEF_HAVE_TOP)
+        for (int y = -2; y < 0; y++)
+            pixel_copy(buf + y * buf_stride,
+                       top + (y + 2) * src_stride, x_end);
+    for (int y = 0; y < h; y++)
+        pixel_copy(buf + y * buf_stride, src + y * src_stride, x_end);
+    if (edges & CDEF_HAVE_BOTTOM)
+        for (int y = h; y < h + 2; y++)
+            pixel_copy(buf + y * buf_stride,
+                       bottom + (y - h) * src_stride, x_end);
+}
+
+static void cdef_prep_y_c(pixel *const buf, const pixel *const src,
+                          const ptrdiff_t src_stride,
+                          const pixel *const top, const pixel *const bottom,
+                          int num_units, const enum CdefEdgeFlags edges)
+{
+    const ptrdiff_t buf_stride = get_buffer_stride_y();
+    cdef_prep_c(buf + buf_stride * 2 + 2, buf_stride, src, src_stride,
+                top, bottom, num_units, edges, 0, 0);
+}
+
+static void cdef_prep_uv_c(pixel *buf, pixel **const src, ptrdiff_t src_stride,
+                           pixel **const top, pixel **const bottom,
+                           int num_units, enum CdefEdgeFlags edges,
+                           int ss_hor, int ss_ver) {
+    const ptrdiff_t buf_stride = get_buffer_stride_uv(ss_hor);
+    buf += buf_stride * 2 + 2;
+    for (int pl = 1; pl <= 2; pl++) {
+        cdef_prep_c(buf, buf_stride, src[pl - 1], src_stride,
+                    top[pl - 1], bottom[pl - 1], num_units, edges,
+                    ss_hor, ss_ver);
+        // Jump to the middle of the stride to advance to the second plane.
+        buf += buf_stride >> 1;
+    }
+}
+
+#define cdef_prep_uv_fn(layout, ss_hor, ss_ver) \
+static void cdef_prep_uv_##layout##_c(pixel *buf, pixel **const src, \
+                                      const ptrdiff_t src_stride, \
+                                      pixel **const top, \
+                                      pixel **const bottom, \
+                                      int num_units, \
+                                      const enum CdefEdgeFlags edges) \
+{ \
+    cdef_prep_uv_c(buf, src, src_stride, top, bottom, num_units, edges, \
+                   ss_hor, ss_ver); \
+}
+
+cdef_prep_uv_fn(444, 0, 0);
+cdef_prep_uv_fn(422, 1, 0);
+cdef_prep_uv_fn(420, 1, 1);
+
 static inline int constrain(const int diff, const int threshold,
                             const int shift)
 {
@@ -55,10 +150,7 @@ static inline void fill(int16_t *tmp, const ptrdiff_t stride,
 
 static void padding(int16_t *tmp, const ptrdiff_t tmp_stride,
                     const pixel *src, const ptrdiff_t src_stride,
-                    const pixel (*left)[2],
-                    const pixel *top, const pixel *bottom,
-                    const int w, const int h, const enum CdefEdgeFlags edges)
-{
+                    const int w, const int h, const enum CdefEdgeFlags edges) {
     // fill extended input buffer
     int x_start = -2, x_end = w + 2, y_start = -2, y_end = h + 2;
     if (!(edges & CDEF_HAVE_TOP)) {
@@ -78,43 +170,23 @@ static void padding(int16_t *tmp, const ptrdiff_t tmp_stride,
         x_end -= 2;
     }
 
-    for (int y = y_start; y < 0; y++) {
+    for (int y = y_start; y < y_end; y++)
         for (int x = x_start; x < x_end; x++)
-            tmp[x + y * tmp_stride] = top[x];
-        top += PXSTRIDE(src_stride);
-    }
-    for (int y = 0; y < h; y++)
-        for (int x = x_start; x < 0; x++)
-            tmp[x + y * tmp_stride] = left[y][2 + x];
-    for (int y = 0; y < h; y++) {
-        for (int x = (y < h) ? 0 : x_start; x < x_end; x++)
-            tmp[x] = src[x];
-        src += PXSTRIDE(src_stride);
-        tmp += tmp_stride;
-    }
-    for (int y = h; y < y_end; y++) {
-        for (int x = x_start; x < x_end; x++)
-            tmp[x] = bottom[x];
-        bottom += PXSTRIDE(src_stride);
-        tmp += tmp_stride;
-    }
-
+            tmp[x + y * tmp_stride] = src[x + y * src_stride];
 }
 
 static NOINLINE void
 cdef_filter_block_c(pixel *dst, const ptrdiff_t dst_stride,
-                    const pixel (*left)[2],
-                    const pixel *const top, const pixel *const bottom,
+                    const pixel *const src, const ptrdiff_t src_stride,
                     const int pri_strength, const int sec_strength,
                     const int dir, const int damping, const int w, int h,
-                    const enum CdefEdgeFlags edges HIGHBD_DECL_SUFFIX)
-{
+                    const enum CdefEdgeFlags edges HIGHBD_DECL_SUFFIX) {
     const ptrdiff_t tmp_stride = 12;
     assert((w == 4 || w == 8) && (h == 4 || h == 8));
     int16_t tmp_buf[144]; // 12*12 is the maximum value of tmp_stride * (h + 4)
     int16_t *tmp = tmp_buf + 2 * tmp_stride + 2;
 
-    padding(tmp, tmp_stride, dst, dst_stride, left, top, bottom, w, h, edges);
+    padding(tmp, tmp_stride, src, src_stride, w, h, edges);
 
     if (pri_strength) {
         const int bitdepth_min_8 = bitdepth_from_max(bitdepth_max) - 8;
@@ -124,7 +196,7 @@ cdef_filter_block_c(pixel *dst, const ptrdiff_t dst_stride,
             const int sec_shift = damping - ulog2(sec_strength);
             do {
                 for (int x = 0; x < w; x++) {
-                    const int px = dst[x];
+                    const int px = tmp[x];
                     int sum = 0;
                     int max = px, min = px;
                     int pri_tap_k = pri_tap;
@@ -169,7 +241,7 @@ cdef_filter_block_c(pixel *dst, const ptrdiff_t dst_stride,
         } else { // pri_strength only
             do {
                 for (int x = 0; x < w; x++) {
-                    const int px = dst[x];
+                    const int px = tmp[x];
                     int sum = 0;
                     int pri_tap_k = pri_tap;
                     for (int k = 0; k < 2; k++) {
@@ -191,7 +263,7 @@ cdef_filter_block_c(pixel *dst, const ptrdiff_t dst_stride,
         const int sec_shift = damping - ulog2(sec_strength);
         do {
             for (int x = 0; x < w; x++) {
-                const int px = dst[x];
+                const int px = tmp[x];
                 int sum = 0;
                 for (int k = 0; k < 2; k++) {
                     const int off1 = dav1d_cdef_directions[dir + 4][k]; // dir + 2
@@ -214,26 +286,62 @@ cdef_filter_block_c(pixel *dst, const ptrdiff_t dst_stride,
     }
 }
 
-#define cdef_fn(w, h) \
-static void cdef_filter_block_##w##x##h##_c(pixel *const dst, \
-                                            const ptrdiff_t stride, \
-                                            const pixel (*left)[2], \
-                                            const pixel *const top, \
-                                            const pixel *const bottom, \
-                                            const int pri_strength, \
-                                            const int sec_strength, \
-                                            const int dir, \
-                                            const int damping, \
-                                            const enum CdefEdgeFlags edges \
-                                            HIGHBD_DECL_SUFFIX) \
-{ \
-    cdef_filter_block_c(dst, stride, left, top, bottom, \
-                        pri_strength, sec_strength, dir, damping, w, h, edges HIGHBD_TAIL_SUFFIX); \
+static void cdef_filter_block_y_c(pixel *const dst, const ptrdiff_t stride,
+                                  const pixel *const buf, ptrdiff_t cbx,
+                                  const int pri_strength,
+                                  const int sec_strength,
+                                  const int dir, const int damping,
+                                  const enum CdefEdgeFlags edges
+                                  HIGHBD_DECL_SUFFIX)
+{
+    const ptrdiff_t buf_stride = get_buffer_stride_y();
+    const ptrdiff_t buf_offset = buf_stride * 2 + 2 + cbx * 8;
+    cdef_filter_block_c(dst, stride, buf + buf_offset, buf_stride,
+                        pri_strength, sec_strength, dir, damping, 8, 8, edges
+                        HIGHBD_TAIL_SUFFIX);
 }
 
-cdef_fn(4, 4);
-cdef_fn(4, 8);
-cdef_fn(8, 8);
+static void cdef_filter_block_uv_c(pixel **const dst, const ptrdiff_t stride,
+                                  const pixel *buf, const ptrdiff_t cbx,
+                                  const int pri_strength,
+                                  const int sec_strength,
+                                  const int dir, const int damping,
+                                  const int w, const int h,
+                                  const enum CdefEdgeFlags edges
+                                  HIGHBD_DECL_SUFFIX)
+{
+    const int ss_hor = (w == 4);
+    // Each stride of buffer holds a rows from each source.
+    const ptrdiff_t buf_stride = get_buffer_stride_uv(ss_hor);
+    buf += buf_stride * 2 + 2 + cbx * w;
+    for (int pl = 1; pl <= 2; pl++) {
+        cdef_filter_block_c(dst[pl - 1], stride, buf, buf_stride,
+                            pri_strength, sec_strength, dir, damping, w, h,
+                            edges HIGHBD_TAIL_SUFFIX);
+        // Jump to the middle of the stride to advance to the second plane.
+        buf += buf_stride >> 1;
+    }
+}
+
+#define cdef_uv_fn(w, h) \
+static void cdef_filter_block_uv_##w##x##h##_c(pixel **const dst, \
+                                               const ptrdiff_t stride, \
+                                               const pixel *const buf,  \
+                                               const ptrdiff_t cbx, \
+                                               const int pri_strength, \
+                                               const int sec_strength, \
+                                               const int dir, \
+                                               const int damping, \
+                                               const enum CdefEdgeFlags edges \
+                                               HIGHBD_DECL_SUFFIX) \
+{ \
+    cdef_filter_block_uv_c(dst, stride, buf, cbx, pri_strength, sec_strength, \
+                            dir, damping, w, h, edges HIGHBD_TAIL_SUFFIX); \
+}
+
+cdef_uv_fn(4, 4);
+cdef_uv_fn(4, 8);
+cdef_uv_fn(8, 8);
 
 static int cdef_find_dir_c(const pixel *img, const ptrdiff_t stride,
                            unsigned *const var HIGHBD_DECL_SUFFIX)
@@ -306,8 +414,6 @@ static int cdef_find_dir_c(const pixel *img, const ptrdiff_t stride,
 #if HAVE_ASM
 #if ARCH_AARCH64 || ARCH_ARM
 #include "src/arm/cdef.h"
-#elif ARCH_PPC64LE
-#include "src/ppc/cdef.h"
 #elif ARCH_X86
 #include "src/x86/cdef.h"
 #endif
@@ -315,15 +421,20 @@ static int cdef_find_dir_c(const pixel *img, const ptrdiff_t stride,
 
 COLD void bitfn(dav1d_cdef_dsp_init)(Dav1dCdefDSPContext *const c) {
     c->dir = cdef_find_dir_c;
-    c->fb[0] = cdef_filter_block_8x8_c;
-    c->fb[1] = cdef_filter_block_4x8_c;
-    c->fb[2] = cdef_filter_block_4x4_c;
+
+    c->prep_y = cdef_prep_y_c;
+    c->fb_y = cdef_filter_block_y_c;
+
+    c->prep_uv[0] = cdef_prep_uv_444_c;
+    c->prep_uv[1] = cdef_prep_uv_422_c;
+    c->prep_uv[2] = cdef_prep_uv_420_c;
+    c->fb_uv[0] = cdef_filter_block_uv_8x8_c;
+    c->fb_uv[1] = cdef_filter_block_uv_4x8_c;
+    c->fb_uv[2] = cdef_filter_block_uv_4x4_c;
 
 #if HAVE_ASM
 #if ARCH_AARCH64 || ARCH_ARM
     cdef_dsp_init_arm(c);
-#elif ARCH_PPC64LE
-    cdef_dsp_init_ppc(c);
 #elif ARCH_X86
     cdef_dsp_init_x86(c);
 #endif

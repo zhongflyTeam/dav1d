@@ -28,16 +28,17 @@
 #include "src/cpu.h"
 #include "src/cdef.h"
 
-#define decl_cdef_fns(ext) \
-    decl_cdef_fn(BF(dav1d_cdef_filter_4x4, ext)); \
-    decl_cdef_fn(BF(dav1d_cdef_filter_4x8, ext)); \
-    decl_cdef_fn(BF(dav1d_cdef_filter_8x8, ext))
+#if BITDEPTH == 8 && ARCH_X86_64
+decl_cdef_prep_y_fn(dav1d_cdef_prep_y_8bpc_avx2);
+decl_cdef_y_fn(dav1d_cdef_filter_y_8bpc_avx2);
 
-decl_cdef_fns(avx512icl);
-decl_cdef_fns(avx2);
-decl_cdef_fns(sse4);
-decl_cdef_fns(ssse3);
-decl_cdef_fns(sse2);
+decl_cdef_prep_uv_fn(dav1d_cdef_prep_uv_444_8bpc_avx2);
+decl_cdef_prep_uv_fn(dav1d_cdef_prep_uv_422_8bpc_avx2);
+decl_cdef_prep_uv_fn(dav1d_cdef_prep_uv_420_8bpc_avx2);
+decl_cdef_uv_fn(dav1d_cdef_filter_uv_8x8_8bpc_avx2);
+decl_cdef_uv_fn(dav1d_cdef_filter_uv_4x8_8bpc_avx2);
+decl_cdef_uv_fn(dav1d_cdef_filter_uv_4x4_8bpc_avx2);
+#endif
 
 decl_cdef_dir_fn(BF(dav1d_cdef_dir, avx2));
 decl_cdef_dir_fn(BF(dav1d_cdef_dir, sse4));
@@ -48,40 +49,34 @@ static ALWAYS_INLINE void cdef_dsp_init_x86(Dav1dCdefDSPContext *const c) {
 
 #if BITDEPTH == 8
     if (!(flags & DAV1D_X86_CPU_FLAG_SSE2)) return;
-
-    c->fb[0] = BF(dav1d_cdef_filter_8x8, sse2);
-    c->fb[1] = BF(dav1d_cdef_filter_4x8, sse2);
-    c->fb[2] = BF(dav1d_cdef_filter_4x4, sse2);
 #endif
 
     if (!(flags & DAV1D_X86_CPU_FLAG_SSSE3)) return;
 
     c->dir = BF(dav1d_cdef_dir, ssse3);
-    c->fb[0] = BF(dav1d_cdef_filter_8x8, ssse3);
-    c->fb[1] = BF(dav1d_cdef_filter_4x8, ssse3);
-    c->fb[2] = BF(dav1d_cdef_filter_4x4, ssse3);
 
     if (!(flags & DAV1D_X86_CPU_FLAG_SSE41)) return;
 
     c->dir = BF(dav1d_cdef_dir, sse4);
-#if BITDEPTH == 8
-    c->fb[0] = BF(dav1d_cdef_filter_8x8, sse4);
-    c->fb[1] = BF(dav1d_cdef_filter_4x8, sse4);
-    c->fb[2] = BF(dav1d_cdef_filter_4x4, sse4);
-#endif
 
 #if ARCH_X86_64
     if (!(flags & DAV1D_X86_CPU_FLAG_AVX2)) return;
 
     c->dir = BF(dav1d_cdef_dir, avx2);
-    c->fb[0] = BF(dav1d_cdef_filter_8x8, avx2);
-    c->fb[1] = BF(dav1d_cdef_filter_4x8, avx2);
-    c->fb[2] = BF(dav1d_cdef_filter_4x4, avx2);
+#if BITDEPTH == 8
+    c->prep_y = BF(dav1d_cdef_prep_y, avx2);
+    c->fb_y = BF(dav1d_cdef_filter_y, avx2);
+
+    c->prep_uv[0] = BF(dav1d_cdef_prep_uv_444, avx2);
+    c->fb_uv[0] = BF(dav1d_cdef_filter_uv_8x8, avx2);
+
+    c->prep_uv[1] = BF(dav1d_cdef_prep_uv_422, avx2);
+    c->fb_uv[1] = BF(dav1d_cdef_filter_uv_4x8, avx2);
+
+    c->prep_uv[2] = BF(dav1d_cdef_prep_uv_420, avx2);
+    c->fb_uv[2] = BF(dav1d_cdef_filter_uv_4x4, avx2);
+#endif
 
     if (!(flags & DAV1D_X86_CPU_FLAG_AVX512ICL)) return;
-
-    c->fb[0] = BF(dav1d_cdef_filter_8x8, avx512icl);
-    c->fb[1] = BF(dav1d_cdef_filter_4x8, avx512icl);
-    c->fb[2] = BF(dav1d_cdef_filter_4x4, avx512icl);
 #endif
 }
