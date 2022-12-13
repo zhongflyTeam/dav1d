@@ -77,6 +77,7 @@ COLD void dav1d_default_settings(Dav1dSettings *const s) {
     s->strict_std_compliance = 0;
     s->output_invisible_frames = 0;
     s->inloop_filters = DAV1D_INLOOPFILTER_ALL;
+    memset(&s->debug, 0, sizeof(s->debug));
 }
 
 static void close_internal(Dav1dContext **const c_out, int flush);
@@ -164,6 +165,15 @@ COLD int dav1d_open(Dav1dContext **const c_out, const Dav1dSettings *const s) {
     c->strict_std_compliance = s->strict_std_compliance;
     c->output_invisible_frames = s->output_invisible_frames;
     c->inloop_filters = s->inloop_filters;
+    c->debug.on = s->debug.on;
+    c->debug.poc = s->debug.poc;
+    c->debug.from_bx = s->debug.from_bx;
+    c->debug.to_bx = s->debug.to_bx;
+    c->debug.from_by = s->debug.from_by;
+    c->debug.to_by = s->debug.to_by;
+    c->debug.block_details = s->debug.block_details;
+    c->debug.dump_pixels = s->debug.dump_pixels;
+    c->debug.coef_reading = s->debug.coef_reading;
 
     dav1d_data_props_set_defaults(&c->cached_error_props);
 

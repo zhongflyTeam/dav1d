@@ -31,10 +31,13 @@
 #include "src/internal.h"
 #include "src/levels.h"
 
-#define DEBUG_BLOCK_INFO 0 && \
-        f->frame_hdr->frame_offset == 2 && t->by >= 0 && t->by < 4 && \
-        t->bx >= 8 && t->bx < 12
-#define DEBUG_B_PIXELS 0
+#define DEBUG_BLOCK_INFO f->c->debug.on && \
+        f->frame_hdr->frame_offset == f->c->debug.poc && \
+        t->by >= f->c->debug.from_by && t->by < f->c->debug.to_by && \
+        t->bx >= f->c->debug.from_bx && t->bx < f->c->debug.to_bx
+#define DEBUG_B_DETAILS DEBUG_BLOCK_INFO && f->c->debug.block_details
+#define DEBUG_B_PIXELS DEBUG_BLOCK_INFO && f->c->debug.dump_pixels
+#define DEBUG_CF_READING DEBUG_BLOCK_INFO && f->c->debug.coef_reading
 
 #define decl_recon_b_intra_fn(name) \
 void (name)(Dav1dTaskContext *t, enum BlockSize bs, \

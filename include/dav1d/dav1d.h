@@ -86,6 +86,15 @@ typedef struct Dav1dSettings {
                                  ///< once when shown, default 0)
     enum Dav1dInloopFilterType inloop_filters; ///< postfilters to enable during decoding (default
                                                ///< DAV1D_INLOOPFILTER_ALL)
+    struct {
+        int on;
+        int poc;
+        int from_bx, to_bx;
+        int from_by, to_by;
+        int block_details;
+        int dump_pixels;
+        int coef_reading;
+    } debug;
     uint8_t reserved[20]; ///< reserved for future use
 } Dav1dSettings;
 
