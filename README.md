@@ -109,6 +109,7 @@ meson build --cross-file=package/crossfiles/i686-linux32.meson
 
 ## Cross-Compilation for 32-bit or 64-bit Android
 
+
 ### build for arm64-v8a ABI
 
 prerequirement: ensure Android NDK r21 installed and ``aarch64-linux-android21-clang`` is available in your shell
@@ -130,6 +131,8 @@ cd armeabi-v7a
 meson --buildtype release --cross-file ../package/crossfiles/arm-android.meson
 ninja -C .
 ```
+
+then put the above arm64-v8a and armeabi-v7a directories into your ``jniLibs`` (specified through android.sourceSets.main.jniLibs.srcDir in build.gradle) directory 
 
 ## Build documentation
 
