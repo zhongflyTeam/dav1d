@@ -111,7 +111,7 @@ meson build --cross-file=package/crossfiles/i686-linux32.meson
 
 ### build for arm64-v8a ABI
 
-prerequirement: ensure Android NDK r21(21.4.7075529 in my case) install and ``aarch64-linux-android21-clang`` is available in your shell
+prerequirement: ensure Android NDK r21 installed and ``aarch64-linux-android21-clang`` is available in your shell
 
 ```
 mkdir arm64-v8a
@@ -122,7 +122,7 @@ ninja -C .
 
 ### build for armeabi-v7a ABI
 
-prerequirement: ensure Android NDK r21(21.4.7075529 in my case) installed and ``armv7a-linux-androideabi19-clang`` is available in your shell
+prerequirement: ensure Android NDK r21 installed and ``armv7a-linux-androideabi19-clang`` is available in your shell
 
 ```
 mkdir armeabi-v7a
