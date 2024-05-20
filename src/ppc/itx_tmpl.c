@@ -313,8 +313,7 @@
 }
 
 void dav1d_inv_txfm_add_dct_dct_4x4_8bpc_pwr9(uint8_t *dst, const ptrdiff_t stride,
-                                              int16_t *const coeff, const int eob
-                                              HIGHBD_DECL_SUFFIX)
+                                              int16_t *const coeff, const int eob)
 {
     int has_dconly = 1;
 
@@ -368,8 +367,7 @@ void dav1d_inv_txfm_add_dct_dct_4x4_8bpc_pwr9(uint8_t *dst, const ptrdiff_t stri
 }
 
 void dav1d_inv_txfm_add_wht_wht_4x4_8bpc_pwr9(pixel *dst, const ptrdiff_t stride,
-                                              coef *const coeff, const int eob
-                                              HIGHBD_DECL_SUFFIX)
+                                              coef *const coeff, const int eob)
 {
     LOAD_COEFF_4(coeff)
 
@@ -429,8 +427,7 @@ void dav1d_inv_txfm_add_wht_wht_4x4_8bpc_pwr9(pixel *dst, const ptrdiff_t stride
 
 #define inv_txfm_fn4x4(type1, type2) \
 void dav1d_inv_txfm_add_##type1##_##type2##_4x4_8bpc_pwr9(uint8_t *dst, const ptrdiff_t stride, \
-                                                          int16_t *const coeff, const int eob \
-                                                          HIGHBD_DECL_SUFFIX) \
+                                                          int16_t *const coeff, const int eob) \
 { \
     LOAD_COEFF_4(coeff) \
     type1##_4_in(c0, c1, c2, c3, c01, c23) \
@@ -864,8 +861,7 @@ inv_txfm_fn4x4(flipadst, flipadst)
 }
 
 void dav1d_inv_txfm_add_dct_dct_4x8_8bpc_pwr9(uint8_t *dst, const ptrdiff_t stride,
-                                              int16_t *const coeff, const int eob
-                                              HIGHBD_DECL_SUFFIX)
+                                              int16_t *const coeff, const int eob)
 {
     const int has_dconly = 1;
 
@@ -930,8 +926,7 @@ void dav1d_inv_txfm_add_dct_dct_4x8_8bpc_pwr9(uint8_t *dst, const ptrdiff_t stri
 
 #define inv_txfm_fn4x8(type1, type2) \
 void dav1d_inv_txfm_add_##type1##_##type2##_4x8_8bpc_pwr9(uint8_t *dst, const ptrdiff_t stride, \
-                                                          int16_t *const coeff, const int eob \
-                                                          HIGHBD_DECL_SUFFIX) \
+                                                          int16_t *const coeff, const int eob) \
 { \
     i16x8 v = vec_splats((int16_t)(2896*8)); \
     LOAD_SCALE_COEFF_4x8(coeff, v) \
@@ -967,8 +962,7 @@ inv_txfm_fn4x8(flipadst, flipadst)
 
 
 void dav1d_inv_txfm_add_dct_dct_8x4_8bpc_pwr9(uint8_t *dst, const ptrdiff_t stride,
-                                              int16_t *const coeff, const int eob
-                                              HIGHBD_DECL_SUFFIX)
+                                              int16_t *const coeff, const int eob)
 {
     const int has_dconly = 1;
 
@@ -1035,8 +1029,7 @@ void dav1d_inv_txfm_add_dct_dct_8x4_8bpc_pwr9(uint8_t *dst, const ptrdiff_t stri
 
 #define inv_txfm_fn8x4(type1, type2) \
 void dav1d_inv_txfm_add_##type1##_##type2##_8x4_8bpc_pwr9(uint8_t *dst, const ptrdiff_t stride, \
-                                                          int16_t *const coeff, const int eob \
-                                                          HIGHBD_DECL_SUFFIX) \
+                                                          int16_t *const coeff, const int eob) \
 { \
     i16x8 v = vec_splats((int16_t)(2896*8)); \
     LOAD_SCALE_COEFF_8x4(coeff, v) \
@@ -1072,8 +1065,7 @@ inv_txfm_fn8x4(adst,     adst    )
 inv_txfm_fn8x4(flipadst, flipadst)
 
 void dav1d_inv_txfm_add_dct_dct_8x8_8bpc_pwr9(uint8_t *dst, const ptrdiff_t stride,
-                                              int16_t *const coeff, const int eob
-                                              HIGHBD_DECL_SUFFIX)
+                                              int16_t *const coeff, const int eob)
 {
     const int has_dconly = 1;
 
@@ -1145,8 +1137,7 @@ void dav1d_inv_txfm_add_dct_dct_8x8_8bpc_pwr9(uint8_t *dst, const ptrdiff_t stri
 
 #define inv_txfm_fn8x8(type1, type2) \
 void dav1d_inv_txfm_add_##type1##_##type2##_8x8_8bpc_pwr9(uint8_t *dst, const ptrdiff_t stride, \
-                                                          int16_t *const coeff, const int eob \
-                                                          HIGHBD_DECL_SUFFIX) \
+                                                          int16_t *const coeff, const int eob) \
 { \
     LOAD_COEFF_8x8(coeff) \
     type1##_8x2_in(c0h, c1h, c2h, c3h, c4h, c5h, c6h, c7h, \
@@ -1186,8 +1177,7 @@ inv_txfm_fn8x8(flipadst, flipadst)
 // identity + scale is a no op
 #define inv_txfm_fn8x8_identity(type2) \
 void dav1d_inv_txfm_add_identity_##type2##_8x8_8bpc_pwr9(uint8_t *dst, const ptrdiff_t stride, \
-                                                         int16_t *const coeff, const int eob \
-                                                         HIGHBD_DECL_SUFFIX) \
+                                                         int16_t *const coeff, const int eob) \
 { \
     LOAD_COEFF_8x8(coeff) \
     memset(coeff, 0, sizeof(*coeff) * 8 * 8); \
