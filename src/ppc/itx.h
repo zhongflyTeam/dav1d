@@ -1,6 +1,6 @@
 /*
- * Copyright © 2019, VideoLAN and dav1d authors
- * Copyright © 2019, Michail Alvanos
+ * Copyright © 2018, VideoLAN and dav1d authors
+ * Copyright © 2023, Luca Barbato
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -25,24 +25,39 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "common/intops.h"
-
 #include "src/cpu.h"
-#include "src/looprestoration.h"
+#include "src/itx.h"
 
-void dav1d_wiener_filter_vsx(uint8_t *p, const ptrdiff_t stride,
-                             const uint8_t (*const left)[4],
-                             const uint8_t *lpf,
-                             const int w, const int h,
-                             const LooprestorationParams *const params,
-                             const enum LrEdgeFlags edges);
+decl_itx17_fns( 4,  4, pwr9);
+decl_itx16_fns( 4,  8, pwr9);
+decl_itx16_fns( 4, 16, pwr9);
+decl_itx16_fns( 8,  4, pwr9);
+decl_itx16_fns( 8,  8, pwr9);
+decl_itx16_fns( 8, 16, pwr9);
+decl_itx2_fns ( 8, 32, pwr9);
+decl_itx16_fns(16,  4, pwr9);
+decl_itx16_fns(16,  8, pwr9);
+decl_itx12_fns(16, 16, pwr9);
+decl_itx2_fns (16, 32, pwr9);
+decl_itx2_fns (32,  8, pwr9);
+decl_itx2_fns (32, 16, pwr9);
+decl_itx2_fns (32, 32, pwr9);
 
-static ALWAYS_INLINE void loop_restoration_dsp_init_ppc(Dav1dLoopRestorationDSPContext *const c, const int bpc) {
+decl_itx_fn(BF(dav1d_inv_txfm_add_dct_dct_16x64, pwr9));
+decl_itx_fn(BF(dav1d_inv_txfm_add_dct_dct_32x64, pwr9));
+decl_itx_fn(BF(dav1d_inv_txfm_add_dct_dct_64x16, pwr9));
+decl_itx_fn(BF(dav1d_inv_txfm_add_dct_dct_64x32, pwr9));
+decl_itx_fn(BF(dav1d_inv_txfm_add_dct_dct_64x64, pwr9));
+
+static ALWAYS_INLINE void itx_dsp_init_ppc(Dav1dInvTxfmDSPContext *const c, const int bpc) {
     const unsigned flags = dav1d_get_cpu_flags();
 
-    if (!(flags & DAV1D_PPC_CPU_FLAG_VSX)) return;
+    if (!(flags & DAV1D_PPC_CPU_FLAG_PWR9)) return;
 
 #if BITDEPTH == 8
-    c->wiener[0] = c->wiener[1] = dav1d_wiener_filter_vsx;
+    assign_itx17_fn( ,  4,  4, pwr9);
+    assign_itx16_fn(R,  4,  8, pwr9);
+    assign_itx16_fn(R,  8,  4, pwr9);
+    assign_itx16_fn(,   8,  8, pwr9);
 #endif
 }
